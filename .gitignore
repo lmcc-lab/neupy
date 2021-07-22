@@ -1,3 +1,2 @@
 # ignore csv folders
-*.csv
-*.xlsx
+/Contributing_chains/**
