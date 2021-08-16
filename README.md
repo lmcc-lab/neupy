@@ -20,12 +20,10 @@ nuclear data = nubaseSorter.nubase
 The original databases should be kept in a folder ./databases/ with file headings fyu235thermal.txt 
 and Parsed_nubase2016.xlsx for the fission data and nubase data respectively. 
 
-'''
+~~~
 import nubaseSorter as ns
-fissionData = ns.fiss_data            #Get all raw fission data in dataframe object.
-nubaseData = ns.nubase                #Get all raw nubase data in dataframe object.
-fiss_column_Z = ns.Z                  #Get column Z from fission data, list object.
-ns.A, ns.Level, ns.Yeild, ns.Yeild_uncert all accessable
-nubase_column_Z = ns.nuZ              #Get column A from nubase data, list object.
-ns.nuA is also accessable.
-'''
+fissionData = ns.fiss_data           
+nubaseData = ns.nubase               
+fiss_column_Z = ns.Z                 
+nubase_column_Z = ns.nuZ              
+~~~
