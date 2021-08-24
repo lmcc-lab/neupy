@@ -30,6 +30,7 @@ import nubaseSorter as ns
 # nubaseData = ns.nubase                #Get all raw nubase data in dataframe object.
 
 # fiss_column_Z = ns.Z                  #Get column Z from fission data, list object.
+# print(len(fiss_column_Z))
 # ns.A, ns.Level, ns.Yeild, ns.Yeild_uncert all accessable
 
 # nubase_column_Z = ns.nuZ              #Get column A from nubase data, list object.
@@ -306,17 +307,19 @@ import preferences
 import pandas as pd
 
 #Setup a time axis
-starting_time = 3e6
-ending_time = 3.1e6
-time = np.linspace(starting_time, ending_time, int(ending_time-starting_time)+1)
-print(time)
-
-#Export the CDF and PDF contributions by maximum contribution.
-CDF_output = sud.export_data(time).full_CDF()
-CDF = CDF_output[:, 1]
-plt.plot(time, CDF)
-plt.xscale('log')
-plt.show()
+# starting_time = -2
+# ending_time = 20
+# time = np.logspace(starting_time, ending_time, 1000) #int(ending_time-starting_time)+1
+# # print(time)
+#
+# #Export the CDF and PDF contributions by maximum contribution.
+# CDF_output = sud.export_data().maxContributions(full=True)
+# CDF = CDF_output[0]
+# CDF = eval('lambda t: '+CDF)
+# plt.plot(time, list(map(CDF, time)))
+# plt.xscale('log')
+# plt.show()
+# print(CDF[-1])
 '''
                                     ContributingChartGenerator.py
 ______________________________________________________________________________________________
@@ -362,25 +365,28 @@ import constants as ct
 from dependencies import conv_str_to_list as ctl
 from dependencies import find_index as fi
 
-# time = np.linspace(0,3*10**6,int(3*10**6+1))
+time = np.logspace(0,6,100)
 # sud.export_data(time).contributers().maxContributions(full=True)
-# thermal = np.zeros(len(time))
-# tOn = 10**1
-# tOff = 10**4
-
-# thermal[fi(time, tOn):fi(time,tOff)] = ct.Reactor_output
-
-# CDFPDF_data = pd.read_csv('./Contributing_chains/'+preferences.simpleTitle+'CDF_PDF_full.csv')
-# CDF = np.array(ctl(CDFPDF_data.iloc[0,1]))
-# flux = nf.neuFlux(time, thermal, CDF).flux().neutrinoFlux
-# # plt.plot(time, thermal)
+thermal = np.zeros(len(time))
+tOn = 10**1
+tOff = 10**4
+#
+thermal[fi(time, tOn):fi(time,tOff)] = ct.Reactor_output
+#
+CDF_data = pd.read_csv('./Contributing_chains/'+preferences.simpleTitle+'CDF_full.csv')
+CDF = CDF_data.iloc[0,1]
+flux = nf.neuFlux(time, thermal, CDF).flux().neutrinoFlux
+plt.plot(time, thermal)
+plt.plot(time, flux)
 # time_offset = 10**4
 # start_plot = fi(time, time_offset)
 # newTime = time-time_offset
 # plt.plot(newTime[start_plot:], flux[start_plot:])
-# # plt.xscale('log')
+plt.xscale('log')
+# plt.show()
+# plt.xscale('log')
 # plt.yscale('log')
-# plt.vlines(tOff-time_offset,0,max(flux))
+# plt.vlines(tOff,0,max(flux))
 # plt.show()
 # plt.plot(time, text.burnt)
 # plt.xscale('log')
@@ -388,7 +394,7 @@ from dependencies import find_index as fi
 # plt.plot(time, text.Uburn)
 # plt.plot(time, text.returnUburn)
 # plt.xscale('log')
-# plt.show()
+plt.show()
 
 
 
@@ -400,7 +406,7 @@ See the help(plotResults) for details on the different functions.
 '''
 import plotResults as pr
 
-time = np.logspace(-2,20,200)
+# time = np.logspace(-2,20,200)
 
 # Plot the fission yeild plot.
 # pr.plotfissionYield(ylog=True)
@@ -408,7 +414,7 @@ time = np.logspace(-2,20,200)
 # Plot full CDF/PDF
 # pr.plotFull(time, CDFPDF='CDF', xlog=True, ylog=False)
 
-CDF = np.genfromtxt('CDF.csv', delimiter=',')
+# CDF = np.genfromtxt('CDF.csv', delimiter=',')
 
 # plt.plot(CDF[:,0], CDF[:,1])
 # plt.xscale('log')
@@ -421,3 +427,4 @@ CDF = np.genfromtxt('CDF.csv', delimiter=',')
 # atomicNumbers = naming.readableToSeperate('135I-53')
 # readableDecayChain, isoDecayData, yeild, fatherDecayConst, fatherIndex = fc.find_by_atomic(atomicNumbers[1], atomicNumbers[0], atomicNumbers[2])
 # pr.plotChainConcentrationStacked(int(isoDecayData['NU isomer']), float(fatherDecayConst), float(yeild), isoDecayData, time, xlog=True)
+

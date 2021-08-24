@@ -5,6 +5,7 @@ Last Edited: 31/05/21
 '''
 
 import decayChain
+import naming
 import nubaseSorter as nuSorter
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -43,7 +44,7 @@ for i,a in enumerate(nuSorter.A):
         fissProd.decay_info()
         fissProd.decay_constant()
         fissProd.daughter()
-        chain = decayChain.chain(fissProd.daughters, fissProd.branchRatio, fissProd.decay_const, fissProd.decayModes)
+        chain = decayChain.chain(fissProd.daughters, fissProd.branchRatio, fissProd.decayModes)
         chain.chain_gen()
         addData = pd.DataFrame([[int(fissProd.NU), fissProd.yeild, fissProd.yeild_uncert, fissProd.level, fissProd.decay_const, fissProd.daughters, fissProd.branchRatio, fissProd.decayModes]],columns = ['NU isomer','Yield','Yield uncertainty','Energy level','Decay Constant','Daughters','Branch Ratios','Decay modes'])
         allData = allData.append(addData, ignore_index = True)

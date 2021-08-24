@@ -23,7 +23,7 @@ class bateman():
     the fathers yeild, 
 
     '''
-    def __init__(self, fatherIsomer, fatherDecayConstant, fatherYeild, weighting, decayConsts, decayModes, time):
+    def __init__(self, fatherIsomer, fatherDecayConstant, fatherYeild, weighting, decayConsts, decayModes):
         '''
         parameters
         -------------
@@ -34,9 +34,7 @@ class bateman():
         weighting, float - broken chains weighting
         decayConsts, list - float elements, broken chains decay constants
         decayModes, list - string elements, broken chains decay modes
-        time, array - time span.
         '''
-        self.time = time
         self.fatherIsomer = naming.readable(fatherIsomer)
         self.fatherDecayConstant = fatherDecayConstant
         self.yeild = fatherYeild
@@ -44,6 +42,7 @@ class bateman():
         self.decayConsts = decayConsts
         self.decayConsts.insert(0, self.fatherDecayConstant)
         self.decayModes = decayModes
+        # self.decayChain = decayChain
     
     def neutrinoVector(self):
         '''
@@ -72,22 +71,23 @@ class bateman():
                     self.nVector[i+1] = self.nVector[i]
         return self
 
-    def CDF_gen(self, show_stacked = False, xlog = False, ylog = False, decayChain = []):
+    def CDF_gen(self, show_stacked = False, xlog = False, ylog = False, decayChain = [], time = []):
         '''
         Generating the cumulative distribution 
         function for neutrinos.
 
         optional parameters
         -------------
-        show_stacked  : booleen
+        @param show_stacked  : booleen
                         shows stacked plot of chain concentrations over time, default to False
-        xlog          : booleen
+        @param xlog          : booleen
                         for the stacked plot, default is False
-        ylog          : booleen
+        @param ylog          : booleen
                         for the stacked plot, default is False
-        decayChain    : list
+        @param decayChain    : list
                         for the stacked plot legend. Default is empty list []
-                        
+        @param time          : array
+                        Add a time array for plotting the stacked concentration plots
 
         generates
         ------------
@@ -104,60 +104,51 @@ class bateman():
         initCond[0] = 1
         #This will store the plots for each species
         species = np.zeros(len(self.decayConsts)).tolist()
-        self.CDF = 0
         solutionPlot = np.zeros(len(species)).tolist()
-        for n,_ in enumerate(species):
-            terms = np.zeros(n+1).tolist()
-            num_of_exp = [len(terms)-i for i in range(len(terms))]
-            for j in range(len(terms)):
-                dc = [self.decayConsts[k+j] for k in range(num_of_exp[j])]
-                firstProd = np.product(dc[:len(terms)-j-1])
-                expVal = [np.exp(-dc[k]*self.time) for k in range(num_of_exp[j])]
-                denom = [[] for k in range(num_of_exp[j])]
-                denom_dc = [[dc[m] for m in range(k)]+[dc[m] for m in range(k+1,num_of_exp[j])] for k in range(num_of_exp[j])]
-                for k in range(len(dc)):
-                    if len(denom_dc[k])>0:
-                        denom[k] = np.array(denom_dc[k])-dc[k]
-                    denom[k] = np.product(denom[k])
-                allVals = [expVal[k]/denom[k] for k in range(len(expVal))]
-                secondSum = 0
-                for k in range(len(allVals)):
-                    secondSum = secondSum+allVals[k]
-                terms[j] = secondSum*firstProd*initCond[j]
-            finalSolution = 0
-            for j in range(len(terms)):
-                finalSolution = finalSolution + terms[j]
-            
-            solutionPlot[n] = finalSolution
-            
-            finalSolution = np.array(finalSolution)*self.nVector[n]
-            self.CDF = self.CDF + finalSolution
-        self.weightedCDF = np.array(self.CDF)*self.rateWeight
-        if show_stacked == True:
-            if len(solutionPlot) == 6:
-                plt.stackplot(self.time, solutionPlot[0], solutionPlot[1], solutionPlot[2], solutionPlot[3], solutionPlot[4], solutionPlot[5], labels=decayChain)
-            elif len(solutionPlot) == 5:
-                plt.stackplot(self.time, solutionPlot[0], solutionPlot[1], solutionPlot[2], solutionPlot[3], solutionPlot[4], labels=decayChain)
-            elif len(solutionPlot) == 4:
-                plt.stackplot(self.time, solutionPlot[0], solutionPlot[1], solutionPlot[2], solutionPlot[3], labels=decayChain)
-            elif len(solutionPlot) == 3:
-                plt.stackplot(self.time, solutionPlot[0], solutionPlot[1], solutionPlot[2], labels=decayChain)
-            elif len(solutionPlot) == 2:
-                plt.stackplot(self.time, solutionPlot[0], solutionPlot[1], labels=decayChain)
-            elif len(solutionPlot) == 1:
-                plt.stackplot(self.time, solutionPlot[0], labels=decayChain)
-            else:
-                plt.plot(self.time, np.zeros(len(self.time)))
 
-            if xlog == True:
-                plt.xscale('log')
-            if ylog == True:
-                plt.yscale('log')
-            plt.xlabel('time (s)')
-            plt.legend(loc='upper right')
-            plt.ylabel('Concetration')
-            plt.title('Fission isotope '+str(self.fatherIsomer))
-            plt.show()
+        def expSum(dcList):
+            """
+            ExpSum generates a string representation of the bateman
+            solution for nuclide j in a linear decay chain. This
+            string can be evaluated to generate the output or it
+            can be appended to futher strings to contribute to the
+            full CDF.
+
+            @param dcList: decay chain list from nuclide 1 to j.
+
+            @return template: string of the executable function.
+            """
+
+            denom = np.product([dcList[m] - dcList[0] for m in range(len(dcList)) if m != 0])   #Calculate the first
+                                                                                                # denominator
+            template = 'np.exp(-' + str(dcList[0]) + '*t)/(' + str(denom) + ')'                 # Begin the template
+
+            for i in range(len(dcList) - 1):    # Work through each decay constant.
+
+                denom = np.product([dcList[m] - dcList[i + 1] for m in range(len(dcList)) if m != i + 1]) # Denominator
+
+                template = template.join(['', '+np.exp(-' + str(dcList[i + 1]) + '*t)/(' + str(denom) + ')']) # append
+                                                                                                            # Contribution
+
+            starting_prod = np.product([dcList[i] for i in range(len(dcList) - 1)]) # Calculate the fist product
+
+            template = str(starting_prod) + '*(' + template + ')'   # Append this to the template
+
+            return template
+
+
+        # Main loop
+        CDF_contrib = str(self.nVector[0]) + '*' + expSum(self.decayConsts[:1]) # Generate the first contribution with neutrino scaling
+
+        for i, dc in enumerate(self.decayConsts):
+
+            if i > 0:
+
+                CDF_contrib = CDF_contrib + '+' + str(self.nVector[i]) + '*' + expSum(self.decayConsts[:i + 1])
+
+        self.CDF_contrib = str(self.rateWeight) + '*(' + CDF_contrib + ')'
+
+
         return self
 
 

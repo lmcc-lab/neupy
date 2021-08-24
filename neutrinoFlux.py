@@ -19,11 +19,11 @@ class neuFlux():
 		parameters
 		----------
 		time    :   array
-					time axis - must be linearly scalled
+					time axis - must be linearly scalled and have t=0 at reactor turn on.
 		thermal :   array
 					thermal output function, J/s vs time
-		CDF		:	array
-					Singular cummulitive neutrino emission
+		CDF		:	string
+					Singular U235 cummulitive neutrino emission
 		
 		returns
 		--------
@@ -31,18 +31,25 @@ class neuFlux():
 						Full neutrino flux for reactor operations.
 		'''
 		self.time = time
-		self.Uburn = thermal/constants.U235_fiss
-		self.CDF = CDF
+		self.Uburn = 0.94*thermal/constants.U235_fiss
+		self.CDF = lambda t: eval(CDF)
 	
 	def flux(self):
-		CummulitiveneutrinoFlux = 0
-		for i in range(len(self.time)):
+		CummulitiveneutrinoFlux = np.zeros(len(self.time))
+		for i, t in enumerate(self.time):
 			if i>0:
-				newNeutrinoCDF = np.roll(self.CDF, i)
-				newNeutrinoCDF[:i] = 0
-				CummulitiveneutrinoFlux = CummulitiveneutrinoFlux + (self.time[i]-self.time[i-1])*self.Uburn[i]*newNeutrinoCDF
-			else:
-				CummulitiveneutrinoFlux = CummulitiveneutrinoFlux + self.Uburn[i]*self.CDF
+				# Time since last check
+				DeltaTau = t- self.time[i-1]
+				BurnRate = self.Uburn[i-1]
+				# deltat = 1/BurnRate
+				print(DeltaTau*BurnRate)
+
+				times = np.linspace(0, DeltaTau, int(DeltaTau*BurnRate))
+				CNF = 0
+				for j in range(len(times)):
+					CNF += self.CDF(DeltaTau-times[j])
+				CummulitiveneutrinoFlux[i] = CummulitiveneutrinoFlux[i-1]+CNF
+
 		
 		self.neutrinoFlux = dp.derivative(CummulitiveneutrinoFlux, self.time)
 		return self
