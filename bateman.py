@@ -100,9 +100,10 @@ class bateman():
         #        i=1          j=i      j=i     p=i, p≠j
         decayChain = naming.readableChain(decayChain)
         decayChain.insert(0, self.fatherIsomer)
+        # InitCond not used
         initCond = np.zeros(len(self.decayConsts))
         initCond[0] = 1
-        #This will store the plots for each species
+        #This will store the plots for each species. Not in use in current build
         species = np.zeros(len(self.decayConsts)).tolist()
         solutionPlot = np.zeros(len(species)).tolist()
 
@@ -147,6 +148,128 @@ class bateman():
                 CDF_contrib = CDF_contrib + '+' + str(self.nVector[i]) + '*' + expSum(self.decayConsts[:i + 1])
 
         self.CDF_contrib = str(self.rateWeight) + '*(' + CDF_contrib + ')'
+
+
+        return self
+
+    def CDF_gen(self, show_stacked = False, xlog = False, ylog = False, decayChain = [], time = []):
+        '''
+        Generating the cumulative distribution
+        function for neutrinos.
+
+        optional parameters
+        -------------
+        @param show_stacked  : booleen
+                        shows stacked plot of chain concentrations over time, default to False
+        @param xlog          : booleen
+                        for the stacked plot, default is False
+        @param ylog          : booleen
+                        for the stacked plot, default is False
+        @param decayChain    : list
+                        for the stacked plot legend. Default is empty list []
+        @param time          : array
+                        Add a time array for plotting the stacked concentration plots
+
+        generates
+        ------------
+        self.CDF
+        self.weightedCDF
+
+        '''
+        #         n           n-1       n         n
+        # Nn(t) = Σ [Ni(0) x ( ∏ λj) x (Σ e^-λjt/(∏ (λp-λj)))]
+        #        i=1          j=i      j=i     p=i, p≠j
+        decayChain = naming.readableChain(decayChain)
+        decayChain.insert(0, self.fatherIsomer)
+        # InitCond not used
+        initCond = np.zeros(len(self.decayConsts))
+        initCond[0] = 1
+        #This will store the plots for each species. Not in use in current build
+        species = np.zeros(len(self.decayConsts)).tolist()
+        solutionPlot = np.zeros(len(species)).tolist()
+
+        def expSum(dcList):
+            """
+            ExpSum generates a string representation of the bateman
+            solution for nuclide j in a linear decay chain. This
+            string can be evaluated to generate the output or it
+            can be appended to futher strings to contribute to the
+            full CDF.
+
+            @param dcList: decay chain list from nuclide 1 to j.
+
+            @return template: string of the executable function.
+            """
+
+            denom = np.product([dcList[m] - dcList[0] for m in range(len(dcList)) if m != 0])   #Calculate the first
+                                                                                                # denominator
+            template = 'np.exp(-' + str(dcList[0]) + '*t)/(' + str(denom) + ')'                 # Begin the template
+
+            if dcList[0] != 0:
+
+                int_1_temp = str(-1/dcList[0]) + '*np.exp(-' + str(dcList[0]) + '*t)/(' + str(denom) + ')' # Used for the
+                                                                                                    # first integration of G
+
+            else:
+                int_1_temp = 't/(' + str(denom) + ')'
+
+            for i in range(len(dcList) - 1):    # Work through each decay constant.
+
+                denom = np.product([dcList[m] - dcList[i + 1] for m in range(len(dcList)) if m != i + 1]) # Denominator
+
+                template = template.join(['', '+np.exp(-' + str(dcList[i + 1]) + '*t)/(' + str(denom) + ')']) # append
+                                                                                                            # Contribution
+                if dcList[i+1] != 0:
+
+                    int_1_temp = int_1_temp + '+'+str(-1/dcList[i + 1])+'*np.exp(-' + str(dcList[i + 1]) + '*t)/(' + str(denom) + ')'
+
+
+                else:
+
+                    int_1_temp = int_1_temp + '+t/(' + str(denom) + ')'
+
+
+            starting_prod = np.product([dcList[i] for i in range(len(dcList) - 1)]) # Calculate the fist product
+
+            template = str(starting_prod) + '*(' + template + ')'   # Append this to the template
+
+            int_1_temp = str(starting_prod) + '*(' + int_1_temp + ')'
+
+            #Finding integration constant
+
+            # G_int_t0 = eval('lambda t:' + int_1_temp)(0)
+            #
+            # A = -G_int_t0
+            #
+            # int_1_temp = int_1_temp + '+' + str(A)
+
+            return template, int_1_temp
+
+
+        # Main loop
+        CDF_contrib = '0' # Generate the first contribution with neutrino scaling
+
+        int_1_CDF_contrib = '0'
+
+        for i, dc in enumerate(self.decayConsts):
+
+            if i > 0 and self.nVector[i] != 0:
+
+                CDF_contrib = CDF_contrib + '+' + str(self.nVector[i]) + '*' + expSum(self.decayConsts[:i + 1])[0]
+
+                int_1_CDF_contrib = int_1_CDF_contrib + '+' + str(self.nVector[i]) + '*' + \
+                                    expSum(self.decayConsts[:i + 1])[1]
+
+        if self.rateWeight != 0:
+            self.CDF_contrib = str(self.rateWeight) + '*(' + CDF_contrib + ')'
+
+            self.int_1_CDF_contrib = str(self.rateWeight) + '*(' + int_1_CDF_contrib + ')'
+
+        else:
+
+            self.CDF_contrib = '0'
+
+            self.int_1_CDF_contrib = '0'
 
 
         return self
