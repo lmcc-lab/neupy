@@ -28,6 +28,20 @@ Sum_f = atom_den*sigma_U                            #Macroscopic cross section o
 U235_fiss = 200e6                                   #Average U235 output energy eV
 eV_joul = 1.60217662e-19                            #J/eV
 U235_fiss = U235_fiss*eV_joul                       #J
+XeHL = 32904                                        #s
+XeDC = np.log(2)/XeHL                                # s^-1
+XeDC_uncert = XeDC*(0.02*3600)/XeHL
+IHL = 6.58*3600                                     # s
+IDC = np.log(2)/IHL
+IDC_uncert = IDC*(0.03*3600)/IHL
+CsHL = 1.33*10**(6)*365*24*3600                     # s
+CsDC = np.log(2)/CsHL
+CsDC_uncert = CsDC*(0.19*10**(6)*365*24*3600)/CsHL
+BaHL = np.inf
+BaDC = 0
+BaDC_uncert = 0
+sigma_x = 2.805*10**(-18)                           # cm^2
+phi_0 = 1.6*10**9                                  # cm^-2s^-1
 
 #Reactor dependent constants
 

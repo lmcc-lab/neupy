@@ -250,22 +250,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 #setup using isotope data
-# Z = 24
-# A = 66
-# level = 0
-# isotopeNU = naming.NU(Z, A, level)
-# isotopeData = ns.isomer(Z, A, level, 1, 0).find_nubase().excit_states().half_life().missing_isomer().decay_info().decay_constant().daughter()
-# chainData = dc.chain(isotopeData.daughters, isotopeData.branchRatio, isotopeData.decay_const, isotopeData.ground_decay_modes).chain_gen()
-# brokenBranches = bb.branches(chainData.isomerChain, chainData.chainIndex, chainData.branchRatioChain, chainData.decayModeChain , chainData.decayConstChain).breakBranches()
-# brokenChains = naming.readableChain(brokenBranches.brokenDecayChainBranches)
+Z = 53
+A = 135
+level = 0
+isotopeNU = naming.NU(Z, A, level)
+isotopeData = ns.isomer(Z, A, level, 1, 0).find_nubase().excit_states().half_life().missing_isomer().decay_info().decay_constant().daughter()
+chainData = dc.chain(isotopeData.daughters, isotopeData.branchRatio, isotopeData.ground_decay_modes).chain_gen()
+print(chainData.isomerChain, chainData.chainIndex, chainData.branchRatioChain, chainData.decayModeChain, chainData.decayConstChain)
+brokenBranches = bb.branches(chainData.isomerChain, chainData.chainIndex, chainData.branchRatioChain, chainData.decayModeChain , chainData.decayConstChain).breakBranches()
+brokenChains = naming.readableChain(brokenBranches.brokenDecayChainBranches)
 
 #Setup a time axis
-# time = np.logspace(-2,10,100)
+time = np.logspace(0,15,100)
 #Use bateman module to generate CDF
 # fullCDF = 0
-# for i, dc in enumerate(brokenBranches.brokenDecayConsts):
-    # print(brokenChains[i])
-    # batemanData = bateman.bateman(isotopeNU, isotopeData.decay_const, 1, brokenBranches.weighting[i], dc, brokenBranches.brokenDecayModes[i], time).neutrinoVector().CDF_gen(show_stacked=True).PDF_gen()
+for i, dec in enumerate(brokenBranches.brokenDecayConsts):
+    print(brokenChains[i])
+    batemanData = bateman.bateman(isotopeNU, isotopeData.decay_const, 1, brokenBranches.weighting[i], dec, brokenBranches.brokenDecayModes[i]).neutrinoVector().CDF_gen(xlog = True, show_stacked=True, decayChain = brokenBranches.brokenDecayChainBranches[i], time=time)
     #Plot each chains CDF
     # plt.plot(time, batemanData.weightedCDF)
     # plt.xlabel('time (s)')
@@ -305,18 +306,32 @@ certain percent of the full. See help(save_updated_data) for more notes.
 import save_updated_data as sud
 import preferences
 import pandas as pd
+from scipy.integrate import quad
+import constants as ct
+from dependencies import find_index as fi
 
 #Setup a time axis
-# starting_time = -2
-# ending_time = 20
-# time = np.logspace(starting_time, ending_time, 1000) #int(ending_time-starting_time)+1
-# # print(time)
+starting_time = -2
+ending_time = 5
+time = np.logspace(starting_time, ending_time, 100) #int(ending_time-starting_time)+1
+thermal = np.zeros(len(time))
+tOn = 10**1
+tOff = 10**4
+
+thermal[fi(time, tOn):fi(time,tOff)] = ct.Reactor_output
 #
 # #Export the CDF and PDF contributions by maximum contribution.
-# CDF_output = sud.export_data().maxContributions(full=True)
-# CDF = CDF_output[0]
-# CDF = eval('lambda t: '+CDF)
-# plt.plot(time, list(map(CDF, time)))
+# CDF_output = sud.export_data().contributers().maxContributions(full=True)
+# with open('./Contributing_chains/'+preferences.simpleTitle+'CDF_full.txt', 'r') as f:
+#     CDF = f.readline()
+# #
+# #
+# # print(CDF)
+# CDF_lam = eval('lambda t: '+CDF)
+# print(CDF_lam)
+# CDF = list(map(CDF_lam, time))
+# #
+# plt.plot(time, CDF)
 # plt.xscale('log')
 # plt.show()
 # print(CDF[-1])
@@ -365,24 +380,24 @@ import constants as ct
 from dependencies import conv_str_to_list as ctl
 from dependencies import find_index as fi
 
-time = np.logspace(0,6,100)
-# sud.export_data(time).contributers().maxContributions(full=True)
-thermal = np.zeros(len(time))
-tOn = 10**1
-tOff = 10**4
-#
-thermal[fi(time, tOn):fi(time,tOff)] = ct.Reactor_output
-#
-CDF_data = pd.read_csv('./Contributing_chains/'+preferences.simpleTitle+'CDF_full.csv')
-CDF = CDF_data.iloc[0,1]
-flux = nf.neuFlux(time, thermal, CDF).flux().neutrinoFlux
-plt.plot(time, thermal)
-plt.plot(time, flux)
+# time = np.logspace(0,6,100)
+# # sud.export_data(time).contributers().maxContributions(full=True)
+# thermal = np.zeros(len(time))
+# tOn = 10**1
+# tOff = 10**4
+# #
+# thermal[fi(time, tOn):fi(time,tOff)] = ct.Reactor_output
+# #
+# CDF_data = pd.read_csv('./Contributing_chains/'+preferences.simpleTitle+'CDF_full.csv')
+# CDF = CDF_data.iloc[0,1]
+# flux = nf.neuFlux(time, thermal, CDF).flux().neutrinoFlux
+# plt.plot(time, thermal)
+# plt.plot(time, flux)
 # time_offset = 10**4
 # start_plot = fi(time, time_offset)
 # newTime = time-time_offset
 # plt.plot(newTime[start_plot:], flux[start_plot:])
-plt.xscale('log')
+# plt.xscale('log')
 # plt.show()
 # plt.xscale('log')
 # plt.yscale('log')
@@ -394,7 +409,7 @@ plt.xscale('log')
 # plt.plot(time, text.Uburn)
 # plt.plot(time, text.returnUburn)
 # plt.xscale('log')
-plt.show()
+# plt.show()
 
 
 
@@ -410,7 +425,6 @@ import plotResults as pr
 
 # Plot the fission yeild plot.
 # pr.plotfissionYield(ylog=True)
-
 # Plot full CDF/PDF
 # pr.plotFull(time, CDFPDF='CDF', xlog=True, ylog=False)
 

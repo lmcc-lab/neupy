@@ -11,10 +11,12 @@ from matplotlib.animation import FuncAnimation
 import save_updated_data as sud
 from dependencies import conv_str_to_list as ctl
 import dependencies as dp
+from numpy import exp as exp
+from math import ceil
 
 class neuFlux():
 
-	def __init__(self, time, thermal, CDF):
+	def __init__(self, time, thermal, CDF, transient = 'equib'):
 		'''
 		parameters
 		----------
@@ -24,68 +26,57 @@ class neuFlux():
 					thermal output function, J/s vs time
 		CDF		:	string
 					Singular U235 cummulitive neutrino emission
+		transient : string
+					'equib', 'on' or 'off' for reactor transient modes. Default is 'equib'
 		
 		returns
 		--------
-		neutrinoFlux :  array
-						Full neutrino flux for reactor operations.
+		neutrinoEmissionRate :  array
+						Full neutrino emission rate for reactor operations.
 		'''
 		self.time = time
 		self.Uburn = 0.94*thermal/constants.U235_fiss
-		self.CDF = lambda t: eval(CDF)
+		if transient == 'off':
+			# Assume reactor has been running for a month at the first burn rate. Also assume all fissions happen at
+			# reactor turn on
+			time_on = 30 * 24 * 3600  # s
+			self.time = self.time+time_on
+			#Insert time = 0 into time array
+			self.time = np.insert(self.time, 0, 0.0, axis=0)
+			self.Uburn = np.insert(self.Uburn, 0, self.Uburn[0], axis = 0)
+
+		self.CDF = list(map(eval('lambda t:' + CDF), time))
+
+
 	
 	def flux(self):
 		CummulitiveneutrinoFlux = np.zeros(len(self.time))
+
 		for i, t in enumerate(self.time):
 			if i>0:
 				# Time since last check
-				DeltaTau = t- self.time[i-1]
+				DeltaTau = t - self.time[i-1]
 				BurnRate = self.Uburn[i-1]
-				# deltat = 1/BurnRate
-				print(DeltaTau*BurnRate)
 
-				times = np.linspace(0, DeltaTau, int(DeltaTau*BurnRate))
-				CNF = 0
-				for j in range(len(times)):
-					CNF += self.CDF(DeltaTau-times[j])
-				CummulitiveneutrinoFlux[i] = CummulitiveneutrinoFlux[i-1]+CNF
+				# Average amount of Uburn in this time step
+				burnt = DeltaTau*BurnRate
 
-		
-		self.neutrinoFlux = dp.derivative(CummulitiveneutrinoFlux, self.time)
+				# Move CDF along time axis, (convolute)
+				currentCDF = self.CDF[:-i]
+				beforeCDF = np.zeros(i+1).tolist()
+
+				beforeCDF.extend(currentCDF)
+				currentCDF = np.array(beforeCDF)
+				#Scale by the number of fissions
+				currentCDF = currentCDF * burnt
+				print(len(currentCDF))
+
+				# Add it to the total
+				CummulitiveneutrinoFlux = CummulitiveneutrinoFlux + currentCDF
+
+		# Take the derivative for emission rate
+		self.neutrinoEmissionRate = dp.derivative(CummulitiveneutrinoFlux, self.time)
 		return self
-
-
-	def convolute(self):
-		'''
-		Move CDF to each point in time on the burnt function
-		and calculate the neutrinos emitted at that time
-		'''
-		self.neutrinoFlux = 0
-		flux = {'timeframe':[], 'CDF':[], 'neuFlux':[], 'neutrinoFlux':[]}
-		flux = pd.DataFrame(flux, columns= ['timeframe','CDF', 'neuFlux','neutrinoFlux'])
-		for i in range(len(self.time)):
-			#CDF is 0 before time = 0, shifting t0
-			#define time[i] = t0 = 0, therefore CDF = 0 for t<t0.
-			# Take rest of time t[i:]-t[i] to set to offset to 0 
-			# and calculate CDF for new time 
-			t0 = self.time[i]
-			timeFrame = self.time[i:]-t0
-			#Calculate CDF
-			sud.export_data(timeFrame).contributers().maxContributions(full=True)
-			CDFPDF_data = pd.read_csv('./Contributing_chains/'+preferences.simpleTitle+'CDF_PDF_full.csv')
-			CDF = np.array(ctl(CDFPDF_data.iloc[0,1]))
-			# PDF = ctl(CDFPDF_data.iloc[0,2])
-			#Add in extra 0's at start
-			if i>0:
-				CDFstart = np.zeros(i)
-				CDF = np.insert(CDF,0,CDFstart)
-			neuFlux = np.array(CDF)*self.burnt[i]
-			self.neutrinoFlux = self.neutrinoFlux + neuFlux
-			saved_flux = pd.DataFrame([[timeFrame, list(CDF), list(neuFlux), list(self.neutrinoFlux)]], columns= ['timeframe','CDF', 'neuFlux','neutrinoFlux'])
-			flux = flux.append(saved_flux)
-		flux.to_csv('./Flux data.csv', sep=',')
-		return self
-
 
 
 

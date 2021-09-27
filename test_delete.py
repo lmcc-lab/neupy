@@ -1,51 +1,39 @@
+import ast
+
 import numpy as np
 import matplotlib.pyplot as plt
-from dependencies import derivative
-from functools import reduce
+test = [1,2,3,4]
 
-# def _channel_to_hex(color_val: int):
-#     raw: str = hex(color_val)[2:]
-#     return raw.zfill(2)
+# function = map(lambda t, dc: np.exp(-dc*t)/np.product([test[m]-dc for m in range(len(test)) if test[m] != dc]))
+
+beforeCDF = list(np.zeros(1).tolist())
+print(beforeCDF)
+list2 = [1,2,3,4,6]
+print(list2)
+beforeCDF.extend(list2)
+print(beforeCDF)
 
 
-# def rgb_to_hex(red: int, green: int, blue: int):
-#     return "#" + _channel_to_hex(red) + _channel_to_hex(green) + _channel_to_hex(blue)
+def expSum(dcList):
+    # Generate exp code
+    # exp template
+    print('Input dcList',dcList)
+    denom = np.product([dcList[m]-dcList[0] for m in range(len(dcList)) if m != 0])
+    print('Denominator',denom)
+    template = 'np.exp(-'+str(dcList[0])+'*t)/('+str(denom)+')'
+    for i in range(len(dcList)-1):
+        denom = np.product([dcList[m]-dcList[i+1] for m in range(len(dcList)) if m != i+1])
+        template = template.join(['','+np.exp(-'+str(dcList[i+1])+'*t)/('+str(denom)+')'])
+    starting_prod = np.product([dcList[i] for i in range(len(dcList)-1)])
+    # template = ''.join([str(starting_prod)+'*(', template, ')'])
+    template = str(starting_prod) + '*(' + template + ')'
+    return template
 
-# print(rgb_to_hex(1,1,1))
+def neutrino_emission_CDF(weighting, nVector, decayConstants):
+    CDF_contrib = str(nVector[0])+'*'+expSum(decayConstants[:1])
+    for i, dc in enumerate(decayConstants):
+        if i>0:
+            CDF_contrib = CDF_contrib +'+'+  str(nVector[i])+'*'+expSum(decayConstants[:i+1])
+    CDF_contrib = str(weighting)+'*(' + CDF_contrib + ')'
 
-# x = np.linspace(0,15*np.pi,100)
-# y = np.sin(x)
-# plt.plot(x,y*x)
-# plt.show()
-
-A=6
-Z=3
-A1 = A/2+A%2
-Z1 = Z/2 +Z%2
-print(A1, Z1)
-
-'''
-N0 = init[0]*np.exp(-dc[0]*t)
-N1 = init[0]*dc[0]*(np.exp(-dc[0]*t)/(dc[1]-dc[0])+np.exp(-dc[1]*t)/(dc[0]-dc[1])) + init[1]*np.exp(-dc[1]*t)
-N2 = init[0]*dc[1]*dc[0]*(np.exp(-dc[0]*t)/((dc[1]-dc[0])*(dc[2]-dc[0]))+np.exp(-dc[1]*t)/((dc[0]-dc[1])*(dc[2]-dc[1]))+np.exp(-dc[2]*t)/((dc[0]-dc[2])*(dc[1]-dc[2]))) + init[1]*dc[1]*(np.exp(-dc[1]*t)/(dc[2]-dc[1])+np.exp(-dc[2]*t)/(dc[1]-dc[2])) + init[2]*np.exp(-dc[2]*t)
-
-dN0 = init[0]*-dc[0]*np.exp(-dc[0]*t)
-dN1 = init[0]*dc[0]*(-dc[0]*np.exp(-dc[0]*t)/(dc[1]-dc[0])-dc[1]*np.exp(-dc[1]*t)/(dc[0]-dc[1])) + init[1]*-dc[1]*np.exp(-dc[1]*t)
-dN2 = init[0]*dc[1]*dc[0]*(-dc[0]*np.exp(-dc[0]*t)/((dc[1]-dc[0])*(dc[2]-dc[0]))-dc[1]*np.exp(-dc[1]*t)/((dc[0]-dc[1])*(dc[2]-dc[1]))-dc[2]*np.exp(-dc[2]*t)/((dc[0]-dc[2])*(dc[1]-dc[2]))) + init[1]*dc[1]*(-dc[1]*np.exp(-dc[1]*t)/(dc[2]-dc[1])-dc[2]*np.exp(-dc[2]*t)/(dc[1]-dc[2])) -dc[2]*init[2]*np.exp(-dc[2]*t)
-CDF = N0*0+N1*1+N2*2
-PDF = dN0*0+dN1*1+dN2*2
-plt.plot(t, N0, label='N0')
-plt.plot(t,dN0, linestyle = ':',label='dN0')
-plt.plot(t,N1,label='N1')
-plt.plot(t,dN1, linestyle = ':',label='dN1')
-plt.plot(t,N2,label='N2')
-plt.plot(t,dN2, linestyle = ':',label='dN2')
-plt.legend()
-plt.xscale('log')
-plt.show()
-plt.plot(t, CDF/max(CDF), label = 'CDF')
-plt.plot(t, PDF/max(PDF), label = 'PDF')
-plt.xscale('log')
-plt.legend()
-plt.show()
-'''
+    return CDF_contrib

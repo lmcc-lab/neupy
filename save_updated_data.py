@@ -1,6 +1,6 @@
 from typing import final
 import pandas as pd
-import numpy as np
+from numpy import *
 from dependencies import conv_str_to_list as ctl, find_index
 import preferences
 import naming
@@ -75,11 +75,11 @@ class export_data():
         Where simpleTitle is either Simple or NotSimple depending on if preferences.simple
         is equal to True or False respectively.
         '''
-        progression = np.linspace(0,self.isotopeData.shape[0],toolbar_width)
-        progression = [int(np.round(progression[i])) for i in range(toolbar_width)]
+        progression = linspace(0,self.isotopeData.shape[0],toolbar_width)
+        progression = [int(round(progression[i])) for i in range(toolbar_width)]
         for index, _ in self.isotopeData.head(n=self.isotopeData.shape[0]).iterrows():
-            distribution_contributions = {'Father':[], 'Chain':[], 'Chain weigthing':[], 'Weighted CDF solution':[],'Max CDF contrib':[], 'First integral':[]}
-            distribution_contributions = pd.DataFrame(distribution_contributions, columns= ['Father','Chain', 'Chain weigthing','Weighted CDF solution','Max CDF contrib','First integral'])
+            distribution_contributions = {'Father':[], 'Chain':[], 'Chain weigthing':[], 'Weighted CDF solution':[],'Max CDF contrib':[]}
+            distribution_contributions = pd.DataFrame(distribution_contributions, columns= ['Father','Chain', 'Chain weigthing','Weighted CDF solution','Max CDF contrib'])
             if index in progression:
                 sys.stdout.write("-")
             self.father_counter += 1
@@ -102,10 +102,10 @@ class export_data():
                     singleCDF.CDF_gen()
                     CDF_max = eval('lambda t: '+singleCDF.CDF_contrib)(1e30)
                     self.chainCounter +=1
-                    readableChain = np.zeros(len(chain)).tolist()
+                    readableChain = zeros(len(chain)).tolist()
                     for j, daught in enumerate(brokenBranches.brokenDecayChainBranches[i]):
                         readableChain[j] = naming.readable(daught)
-                    distributions = pd.DataFrame([[naming.readable(fatherIsomer),readableChain, brokenBranches.weighting[i]*fatherYeild, singleCDF.CDF_contrib, CDF_max, singleCDF.int_1_CDF_contrib]],columns= ['Father','Chain','Chain weigthing','Weighted CDF solution','Max CDF contrib', 'First integral'])
+                    distributions = pd.DataFrame([[naming.readable(fatherIsomer),readableChain, brokenBranches.weighting[i]*fatherYeild, singleCDF.CDF_contrib, CDF_max]],columns= ['Father','Chain','Chain weigthing','Weighted CDF solution','Max CDF contrib'])
                     distribution_contributions = distribution_contributions.append(distributions)
             elif preferences.simple == True and simpleFlag == False:
                 pass
@@ -118,10 +118,10 @@ class export_data():
                     singleCDF.CDF_gen()
                     CDF_max = eval('lambda t: '+singleCDF.CDF_contrib)(1e30)
                     self.chainCounter +=1
-                    readableChain = np.zeros(len(chain)).tolist()
+                    readableChain = zeros(len(chain)).tolist()
                     for j, daught in enumerate(brokenBranches.brokenDecayChainBranches[i]):
                         readableChain[j] = naming.readable(daught)
-                    distributions = pd.DataFrame([[naming.readable(fatherIsomer),readableChain,brokenBranches.weighting[i]*fatherYeild, singleCDF.CDF_contrib, CDF_max, singleCDF.int_1_CDF_contrib]],columns= ['Father','Chain','Chain weigthing','Weighted CDF solution','Max CDF contrib', 'First integral'])
+                    distributions = pd.DataFrame([[naming.readable(fatherIsomer),readableChain,brokenBranches.weighting[i]*fatherYeild, singleCDF.CDF_contrib, CDF_max]],columns= ['Father','Chain','Chain weigthing','Weighted CDF solution','Max CDF contrib'])
                     distribution_contributions = distribution_contributions.append(distributions)
             sys.stdout.flush()
             if index == 0:
@@ -161,24 +161,12 @@ class export_data():
         '''
         Contributing_data = pd.read_csv('./Contributing_chains/'+preferences.simpleTitle+'ConstributingChainsMaxCDF.csv')
         final_CDF = Contributing_data.iloc[0, 4]
-        first_int = Contributing_data.iloc[0,6]
         if full==True:
             for i, _ in Contributing_data.head(n=Contributing_data.shape[0]).iterrows():
                 if i > 0:
                     final_CDF = final_CDF + '+' + Contributing_data.iloc[i,4]
-                    first_int = first_int + '+' + Contributing_data.iloc[i,6]
             with open(outdir+preferences.simpleTitle+'CDF_full.txt', 'w+') as f:
                 f.write(final_CDF)
-            with open(outdir+preferences.simpleTitle+'First_CDF_int.txt', 'w+') as f:
-                f.write(first_int)
-            # output_CDF = pd.DataFrame({'CDF':[]}, columns = ['CDF'])
-            # output_int = pd.DataFrame({'Int':[]}, columns = ['Int'])
-            # final = pd.DataFrame([[final_CDF]], columns = ['CDF'])
-            # final_int = pd.DataFrame([[first_int]], columns =['Int'])
-            # output_CDF = output_CDF.append(final)
-            # output_int = output_int.append(final_int)
-            # output_CDF.to_csv(outdir+preferences.simpleTitle+'CDF_full.csv',sep=',')
-            # output_int.to_csv(outdir+preferences.simpleTitle+'First_CDF_Integral.csv', sep=',')
             num_contrib = False
             running_contributions = False
             running_percent = False
@@ -191,8 +179,8 @@ class export_data():
             for i, _ in Contributing_data.head(n=Contributing_data.shape[0]).iterrows():
                 running_max += Contributing_data.iloc[i,5]
                 running_percent = running_max/sumMax*100
-                running_CDF = running_CDF + np.array(ctl(Contributing_data.iloc[i,4]))
-                running_PDF = running_PDF + np.array(ctl(Contributing_data.iloc[i,6]))
+                running_CDF = running_CDF + array(ctl(Contributing_data.iloc[i,4]))
+                running_PDF = running_PDF + array(ctl(Contributing_data.iloc[i,6]))
                 if running_percent >= preferences.percent_of_final and preferences.pref_percent == True:
                     running_contributions = Contributing_data[:i]
                     num_contrib = i
@@ -204,7 +192,7 @@ class export_data():
             final_CDF = running_CDF
             running_contributions.to_csv(outdir+preferences.simpleTitle+'SelectContributingChains.csv',sep=',')
         print('Data saving complete')
-        return final_CDF, num_contrib, running_contributions, running_percent, first_int
+        return final_CDF, num_contrib, running_contributions, running_percent
 
     def full_CDF(self, save = False):
 
@@ -212,8 +200,8 @@ class export_data():
         sys.stdout.write("[%s]" % (" " * toolbar_width))
         sys.stdout.flush()
         sys.stdout.write("\b" * (toolbar_width + 1))
-        progression = np.linspace(0, self.isotopeData.shape[0], toolbar_width)
-        progression = [int(np.round(progression[i])) for i in range(toolbar_width)]
+        progression = linspace(0, self.isotopeData.shape[0], toolbar_width)
+        progression = [int(round(progression[i])) for i in range(toolbar_width)]
         final_CDF = 0
         for index, _ in self.isotopeData.head(n=self.isotopeData.shape[0]).iterrows():
             if index in progression:
@@ -247,9 +235,9 @@ class export_data():
                     singleCDF.CDF_gen()
                     final_CDF = final_CDF + singleCDF.weightedCDF
             sys.stdout.flush()
-        CDF_output = np.hstack((np.array([self.time]).T, np.array([final_CDF]).T))
+        CDF_output = hstack((array([self.time]).T, array([final_CDF]).T))
         if save == True:
-            np.savetxt('CDF.csv',CDF_output, delimiter=',')
+            savetxt('CDF.csv',CDF_output, delimiter=',')
             print('\nExport complete')
             
         return CDF_output

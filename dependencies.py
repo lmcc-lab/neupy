@@ -109,9 +109,9 @@ def derivative(f,a):
     dy = np.zeros(len(f))
     for i,_ in enumerate(f):
         if i > 0 and i < len(a)-1:
-            h = a[i+1]-a[i-1]
-            dy[i] = (f[i+1]-f[i-1])/h
-        elif i==0:
+        #     h = a[i+1]-a[i-1]
+        #     dy[i] = (f[i+1]-f[i-1])/h
+        # elif i==0:
             h = a[i+1]-a[i]
             dy[i] = (f[i+1]-f[i])/h
         else:

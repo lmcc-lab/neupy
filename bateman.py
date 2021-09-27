@@ -16,6 +16,8 @@ import preferences
 import naming
 import constants
 import math
+from numpy import exp as exp
+import seaborn as sns
 
 class bateman():
     '''
@@ -122,13 +124,13 @@ class bateman():
 
             denom = np.product([dcList[m] - dcList[0] for m in range(len(dcList)) if m != 0])   #Calculate the first
                                                                                                 # denominator
-            template = 'np.exp(-' + str(dcList[0]) + '*t)/(' + str(denom) + ')'                 # Begin the template
+            template = 'exp(-' + str(dcList[0]) + '*t)/(' + str(denom) + ')'                 # Begin the template
 
             for i in range(len(dcList) - 1):    # Work through each decay constant.
 
                 denom = np.product([dcList[m] - dcList[i + 1] for m in range(len(dcList)) if m != i + 1]) # Denominator
 
-                template = template.join(['', '+np.exp(-' + str(dcList[i + 1]) + '*t)/(' + str(denom) + ')']) # append
+                template = template.join(['', '+exp(-' + str(dcList[i + 1]) + '*t)/(' + str(denom) + ')']) # append
                                                                                                             # Contribution
 
             starting_prod = np.product([dcList[i] for i in range(len(dcList) - 1)]) # Calculate the fist product
@@ -143,16 +145,36 @@ class bateman():
 
         for i, dc in enumerate(self.decayConsts):
 
+            solutionPlot[i] = expSum(self.decayConsts[:i + 1])
+
             if i > 0:
 
                 CDF_contrib = CDF_contrib + '+' + str(self.nVector[i]) + '*' + expSum(self.decayConsts[:i + 1])
 
         self.CDF_contrib = str(self.rateWeight) + '*(' + CDF_contrib + ')'
 
+        #Display the stacked concentration models
+        if show_stacked:
+            pal = sns.color_palette("Set1")
+            solutionPlot = str([list(map(eval('lambda t: '+sol), time)) for sol in solutionPlot])
+            solutionPlot = solutionPlot[1:-1]
+            plt.stackplot(time, eval(solutionPlot), labels = decayChain, colors=pal, alpha = 0.6)
+            if xlog:
+                plt.xscale('log')
+            if ylog:
+                plt.yscale('log')
+            plt.grid()
+            plt.xlabel('Time (s)')
+            plt.ylabel('Normalised nucleon number')
+            plt.legend()
+            plt.title('Conservation of total nucleon number')
+            plt.show()
+
+
 
         return self
 
-    def CDF_gen(self, show_stacked = False, xlog = False, ylog = False, decayChain = [], time = []):
+    def CDF_con(self, show_stacked = False, xlog = False, ylog = False, decayChain = [], burn_rate = []):
         '''
         Generating the cumulative distribution
         function for neutrinos.
@@ -188,7 +210,7 @@ class bateman():
         species = np.zeros(len(self.decayConsts)).tolist()
         solutionPlot = np.zeros(len(species)).tolist()
 
-        def expSum(dcList):
+        def expSum(dcList, nVector, rateWeight):
             """
             ExpSum generates a string representation of the bateman
             solution for nuclide j in a linear decay chain. This
@@ -203,37 +225,38 @@ class bateman():
 
             denom = np.product([dcList[m] - dcList[0] for m in range(len(dcList)) if m != 0])   #Calculate the first
                                                                                                 # denominator
-            template = 'np.exp(-' + str(dcList[0]) + '*t)/(' + str(denom) + ')'                 # Begin the template
+
+            starting_prod = np.product([dcList[i] for i in range(len(dcList) - 1)])  # Calculate the fist product
+
+            c = rateWeight * nVector * starting_prod / denom
+
+            template = str(c) + '*exp(-' + str(
+                dcList[0]) + '*t)'  # Begin the template
 
             if dcList[0] != 0:
 
-                int_1_temp = str(-1/dcList[0]) + '*np.exp(-' + str(dcList[0]) + '*t)/(' + str(denom) + ')' # Used for the
+                int_1_temp = str(-c/dcList[0]) + '*exp(-' + str(dcList[0]) + '*t)' # Used for the
                                                                                                     # first integration of G
 
             else:
-                int_1_temp = 't/(' + str(denom) + ')'
+                int_1_temp = str(c)+'*t'
 
             for i in range(len(dcList) - 1):    # Work through each decay constant.
 
                 denom = np.product([dcList[m] - dcList[i + 1] for m in range(len(dcList)) if m != i + 1]) # Denominator
 
-                template = template.join(['', '+np.exp(-' + str(dcList[i + 1]) + '*t)/(' + str(denom) + ')']) # append
-                                                                                                            # Contribution
+                c = rateWeight * nVector * starting_prod / denom
+
+                template = template + '+' +str(c) + '*exp(-' + str(dcList[i + 1]) + '*t)'  # append
+                # Contribution
+
                 if dcList[i+1] != 0:
 
-                    int_1_temp = int_1_temp + '+'+str(-1/dcList[i + 1])+'*np.exp(-' + str(dcList[i + 1]) + '*t)/(' + str(denom) + ')'
-
+                    int_1_temp = int_1_temp + '+' + str(-c/dcList[i+1])+'*exp(-' + str(dcList[i + 1]) + '*t)'
 
                 else:
 
-                    int_1_temp = int_1_temp + '+t/(' + str(denom) + ')'
-
-
-            starting_prod = np.product([dcList[i] for i in range(len(dcList) - 1)]) # Calculate the fist product
-
-            template = str(starting_prod) + '*(' + template + ')'   # Append this to the template
-
-            int_1_temp = str(starting_prod) + '*(' + int_1_temp + ')'
+                    int_1_temp = int_1_temp + '+' + str(c)+'*t'
 
             #Finding integration constant
 
@@ -251,26 +274,24 @@ class bateman():
 
         int_1_CDF_contrib = '0'
 
-        for i, dc in enumerate(self.decayConsts):
-
-            if i > 0 and self.nVector[i] != 0:
-
-                CDF_contrib = CDF_contrib + '+' + str(self.nVector[i]) + '*' + expSum(self.decayConsts[:i + 1])[0]
-
-                int_1_CDF_contrib = int_1_CDF_contrib + '+' + str(self.nVector[i]) + '*' + \
-                                    expSum(self.decayConsts[:i + 1])[1]
-
         if self.rateWeight != 0:
-            self.CDF_contrib = str(self.rateWeight) + '*(' + CDF_contrib + ')'
+            for i, dc in enumerate(self.decayConsts):
 
-            self.int_1_CDF_contrib = str(self.rateWeight) + '*(' + int_1_CDF_contrib + ')'
+                if i > 0 and self.nVector[i] != 0:
 
+                    exp = expSum(self.decayConsts[:i + 1], self.nVector[i], self.rateWeight)
+
+                    CDF_contrib = CDF_contrib + '+(' + exp[0] + ')'
+
+                    int_1_CDF_contrib = int_1_CDF_contrib + '+(' + exp[1] + ')'
+
+            self.CDF_contrib = CDF_contrib
+
+            self.int_1_CDF_contrib = int_1_CDF_contrib
         else:
-
             self.CDF_contrib = '0'
 
             self.int_1_CDF_contrib = '0'
-
 
         return self
 
