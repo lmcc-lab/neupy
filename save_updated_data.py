@@ -78,8 +78,8 @@ class export_data():
         progression = linspace(0,self.isotopeData.shape[0],toolbar_width)
         progression = [int(round(progression[i])) for i in range(toolbar_width)]
         for index, _ in self.isotopeData.head(n=self.isotopeData.shape[0]).iterrows():
-            distribution_contributions = {'Father':[], 'Chain':[], 'Chain weigthing':[], 'Weighted CDF solution':[],'Max CDF contrib':[]}
-            distribution_contributions = pd.DataFrame(distribution_contributions, columns= ['Father','Chain', 'Chain weigthing','Weighted CDF solution','Max CDF contrib'])
+            distribution_contributions = {'Father':[], 'Chain':[], 'Chain weigthing':[], 'Weighted CDF solution':[],'Max CDF contrib':[], 'branch Ratio Uncerts': [], 'Decay constant Uncerts': [], 'Weighting uncert': []}
+            distribution_contributions = pd.DataFrame(distribution_contributions, columns= ['Father','Chain', 'Chain weigthing','Weighted CDF solution','Max CDF contrib','branch Ratio Uncerts', 'Decay constant Uncerts', 'Weighting uncert'])
             if index in progression:
                 sys.stdout.write("-")
             self.father_counter += 1
@@ -87,14 +87,17 @@ class export_data():
             fatherIsomer = int(self.isotopeData['NU isomer'][index])
             fatherDecayConst = float(self.isotopeData['Decay Constant'][index])
             fatherYeild = float(self.isotopeData['Yield'][index])
+            fatherYeildUncert = float(self.isotopeData['Yield uncertainty'][index])
             decayChain = ctl(self.chainData['Decay Chain'][index])
             branchRatios = ctl(self.chainData['Branch Ratio'][index])
             chainIndex = ctl(self.chainData['Branch index'][index])
             decayConstChain = ctl(self.chainData['Decay Constant'][index])
             decayModeChain = ctl(self.chainData['Decay Mode'][index])
+            decayConstUncertChain = ctl(self.chainData['Branch Ratio Uncert'])
+            branchRatioUncertChain = ctl(self.chainData['Decay constants Uncert'])
             simpleFlag = checkSimple(decayModeChain)
             if preferences.simple == True and simpleFlag == True:
-                brokenBranches = bb.branches(decayChain, chainIndex, branchRatios, decayModeChain, decayConstChain)
+                brokenBranches = bb.branches(decayChain, chainIndex, branchRatios, decayModeChain, decayConstChain, decayConstUncertChain, branchRatioUncertChain)
                 brokenBranches.breakBranches()
                 for i, chain in enumerate(brokenBranches.brokenDecayModes):
                     singleCDF = bateman.bateman(fatherIsomer, fatherDecayConst, fatherYeild, brokenBranches.weighting[i], brokenBranches.brokenDecayConsts[i], brokenBranches.brokenDecayModes[i])
@@ -105,7 +108,8 @@ class export_data():
                     readableChain = zeros(len(chain)).tolist()
                     for j, daught in enumerate(brokenBranches.brokenDecayChainBranches[i]):
                         readableChain[j] = naming.readable(daught)
-                    distributions = pd.DataFrame([[naming.readable(fatherIsomer),readableChain, brokenBranches.weighting[i]*fatherYeild, singleCDF.CDF_contrib, CDF_max]],columns= ['Father','Chain','Chain weigthing','Weighted CDF solution','Max CDF contrib'])
+                    weighting_uncert = np.sqrt((brokenBranches.weightingUncert[i]/brokenBranches.weighting[i])**2+(fatherYeildUncert/fatherYeild)**2)
+                    distributions = pd.DataFrame([[naming.readable(fatherIsomer),readableChain, brokenBranches.weighting[i]*fatherYeild, singleCDF.CDF_contrib, CDF_max, brokenBranches.brokenBranchRatiosUncerts[i], brokenBranches.brokenDecayConstsUncerts[i], weighting_uncert]],columns= ['Father','Chain','Chain weigthing','Weighted CDF solution','Max CDF contrib','branch Ratio Uncerts', 'Decay constant Uncerts', 'Weighting uncert'])
                     distribution_contributions = distribution_contributions.append(distributions)
             elif preferences.simple == True and simpleFlag == False:
                 pass
@@ -121,7 +125,16 @@ class export_data():
                     readableChain = zeros(len(chain)).tolist()
                     for j, daught in enumerate(brokenBranches.brokenDecayChainBranches[i]):
                         readableChain[j] = naming.readable(daught)
-                    distributions = pd.DataFrame([[naming.readable(fatherIsomer),readableChain,brokenBranches.weighting[i]*fatherYeild, singleCDF.CDF_contrib, CDF_max]],columns= ['Father','Chain','Chain weigthing','Weighted CDF solution','Max CDF contrib'])
+                    weighting_uncert = np.sqrt(
+                        (brokenBranches.weightingUncert[i] / brokenBranches.weighting[i]) ** 2 + (
+                                    fatherYeildUncert / fatherYeild) ** 2)
+                    distributions = pd.DataFrame([[naming.readable(fatherIsomer), readableChain,
+                                                   brokenBranches.weighting[i] * fatherYeild, singleCDF.CDF_contrib,
+                                                   CDF_max, brokenBranches.brokenBranchRatiosUncerts[i],
+                                                   brokenBranches.brokenDecayConstsUncerts[i], weighting_uncert]],
+                                                 columns=['Father', 'Chain', 'Chain weigthing', 'Weighted CDF solution',
+                                                          'Max CDF contrib', 'branch Ratio Uncerts',
+                                                          'Decay constant Uncerts', 'Weighting uncert'])
                     distribution_contributions = distribution_contributions.append(distributions)
             sys.stdout.flush()
             if index == 0:

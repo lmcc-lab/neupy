@@ -253,20 +253,20 @@ import numpy as np
 Z = 53
 A = 135
 level = 0
-isotopeNU = naming.NU(Z, A, level)
-isotopeData = ns.isomer(Z, A, level, 1, 0).find_nubase().excit_states().half_life().missing_isomer().decay_info().decay_constant().daughter()
-chainData = dc.chain(isotopeData.daughters, isotopeData.branchRatio, isotopeData.ground_decay_modes).chain_gen()
-print(chainData.isomerChain, chainData.chainIndex, chainData.branchRatioChain, chainData.decayModeChain, chainData.decayConstChain)
-brokenBranches = bb.branches(chainData.isomerChain, chainData.chainIndex, chainData.branchRatioChain, chainData.decayModeChain , chainData.decayConstChain).breakBranches()
-brokenChains = naming.readableChain(brokenBranches.brokenDecayChainBranches)
+# isotopeNU = naming.NU(Z, A, level)
+# isotopeData = ns.isomer(Z, A, level, 1, 0).find_nubase().excit_states().half_life().missing_isomer().decay_info().decay_constant().daughter()
+# chainData = dc.chain(isotopeData.daughters, isotopeData.branchRatio, isotopeData.ground_decay_modes).chain_gen()
+# print(chainData.isomerChain, chainData.chainIndex, chainData.branchRatioChain, chainData.decayModeChain, chainData.decayConstChain)
+# brokenBranches = bb.branches(chainData.isomerChain, chainData.chainIndex, chainData.branchRatioChain, chainData.decayModeChain , chainData.decayConstChain).breakBranches()
+# brokenChains = naming.readableChain(brokenBranches.brokenDecayChainBranches)
 
 #Setup a time axis
 time = np.logspace(0,15,100)
 #Use bateman module to generate CDF
 # fullCDF = 0
-for i, dec in enumerate(brokenBranches.brokenDecayConsts):
-    print(brokenChains[i])
-    batemanData = bateman.bateman(isotopeNU, isotopeData.decay_const, 1, brokenBranches.weighting[i], dec, brokenBranches.brokenDecayModes[i]).neutrinoVector().CDF_gen(xlog = True, show_stacked=True, decayChain = brokenBranches.brokenDecayChainBranches[i], time=time)
+# for i, dec in enumerate(brokenBranches.brokenDecayConsts):
+    # print(brokenChains[i])
+    # batemanData = bateman.bateman(isotopeNU, isotopeData.decay_const, 1, brokenBranches.weighting[i], dec, brokenBranches.brokenDecayModes[i]).neutrinoVector().CDF_gen(xlog = True, show_stacked=True, decayChain = brokenBranches.brokenDecayChainBranches[i], time=time)
     #Plot each chains CDF
     # plt.plot(time, batemanData.weightedCDF)
     # plt.xlabel('time (s)')
@@ -321,7 +321,7 @@ tOff = 10**4
 thermal[fi(time, tOn):fi(time,tOff)] = ct.Reactor_output
 #
 # #Export the CDF and PDF contributions by maximum contribution.
-# CDF_output = sud.export_data().contributers().maxContributions(full=True)
+# CDF_output = sud.export_data().contributers()
 # with open('./Contributing_chains/'+preferences.simpleTitle+'CDF_full.txt', 'r') as f:
 #     CDF = f.readline()
 # #
@@ -370,12 +370,12 @@ import findChain as fc
 # print(isoDecayData)
 
 '''
-                                    neutrinoFlux.py
+                                    neutrinoEmissions.py
 ______________________________________________________________________________________________
 This module is designed to output the neutrinoFlux given with a U235 burn rate function. This
 can be calculated from the thermal output of the reactor.
 '''
-import neutrinoFlux as nf
+import neutrinoEmissions as nf
 import constants as ct
 from dependencies import conv_str_to_list as ctl
 from dependencies import find_index as fi
@@ -424,7 +424,7 @@ import plotResults as pr
 # time = np.logspace(-2,20,200)
 
 # Plot the fission yeild plot.
-# pr.plotfissionYield(ylog=True)
+pr.plotfissionYield(ylog=True)
 # Plot full CDF/PDF
 # pr.plotFull(time, CDFPDF='CDF', xlog=True, ylog=False)
 

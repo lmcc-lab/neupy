@@ -13,10 +13,11 @@ from dependencies import conv_str_to_list as ctl
 import dependencies as dp
 from numpy import exp as exp
 from math import ceil
+from correctEmissions import correct_emissions
 
 class neuFlux():
 
-	def __init__(self, time, thermal, CDF, transient = 'equib'):
+	def __init__(self, time, thermal, state = 'equib'):
 		'''
 		parameters
 		----------
@@ -24,10 +25,8 @@ class neuFlux():
 					time axis - must be linearly scalled and have t=0 at reactor turn on.
 		thermal :   array
 					thermal output function, J/s vs time
-		CDF		:	string
-					Singular U235 cummulitive neutrino emission
-		transient : string
-					'equib', 'on' or 'off' for reactor transient modes. Default is 'equib'
+		state : string
+					'equib', 'on' or 'off' for reactor states. Default is 'equib'
 		
 		returns
 		--------
@@ -35,47 +34,94 @@ class neuFlux():
 						Full neutrino emission rate for reactor operations.
 		'''
 		self.time = time
-		self.Uburn = 0.94*thermal/constants.U235_fiss
-		if transient == 'off':
-			# Assume reactor has been running for a month at the first burn rate. Also assume all fissions happen at
-			# reactor turn on
-			time_on = 30 * 24 * 3600  # s
-			self.time = self.time+time_on
-			#Insert time = 0 into time array
-			self.time = np.insert(self.time, 0, 0.0, axis=0)
-			self.Uburn = np.insert(self.Uburn, 0, self.Uburn[0], axis = 0)
+		Uburn = 0.94*thermal/constants.U235_fiss
+		self.state = state
+		self.intervalSize = 20  # s
+		# Get the CDF of the 20s intervals
+		with open('./databases/20s_CDF_high_density.txt', 'r') as f:
+			lines = f.readlines()
+		if state == 'off':
+			maxBurn = max(Uburn)
+			Uburn = np.array([burn for burn in Uburn if burn > 0.06 * maxBurn])
+			self.Uburn = np.append(Uburn, np.zeros(len(thermal) - len(Uburn)))
+			time_before = 8						# days
+			time_before = time_before*24*3600	# s
+			CDF_ints = int(time_before/self.intervalSize)
+			lines = lines[:CDF_ints+1]
+			self.CDF = [float(line.split('\n', 1)[0]) for line in lines]
+			fullCDF_time = len(self.CDF)*self.intervalSize-self.time[-1]-2*self.intervalSize
+			self.CDF_time = np.linspace(0, fullCDF_time, len(self.CDF)-len(self.time))
+		elif state == 'on':
+			lines = lines[:len(time)]
+			self.CDF = [float(line.split('\n', 1)[0]) for line in lines]
+			self.Uburn = Uburn
+			self.CDF_time = 0
+		print('initialised')
 
-		self.CDF = list(map(eval('lambda t:' + CDF), time))
+
 
 
 	
-	def flux(self):
-		CummulitiveneutrinoFlux = np.zeros(len(self.time))
+	def emissions(self):
 
-		for i, t in enumerate(self.time):
-			if i>0:
-				# Time since last check
-				DeltaTau = t - self.time[i-1]
-				BurnRate = self.Uburn[i-1]
+		def generate(state, CDF_time, CDF, Uburn, time):
+			if state == 'off':
+				# Assume reactor has been on for n days. Add actual time to 20 day time
+				ns = len(CDF)*self.intervalSize-time[-1]
+				print(time+ns)# s
+				extended_time = np.append(CDF_time, time+ns)
+				extendedUburn = np.append(np.ones(len(CDF_time)-1)*self.Uburn[0], Uburn)
+				CummulitiveneutrinoFlux = np.zeros(len(extended_time))
+				DeltaTau = time[1]-time[0]
+				for i, t in enumerate(extended_time):
+					if i>0:
+						BurnRate = extendedUburn[i-1]
+						burnt = DeltaTau*BurnRate
+						currentCDF = CDF[:-i]
+						beforeCDF = np.zeros(i).tolist()
 
-				# Average amount of Uburn in this time step
-				burnt = DeltaTau*BurnRate
+						beforeCDF.extend(currentCDF)
+						currentCDF = np.array(beforeCDF)
 
-				# Move CDF along time axis, (convolute)
-				currentCDF = self.CDF[:-i]
-				beforeCDF = np.zeros(i+1).tolist()
+						CummulitiveneutrinoFlux = CummulitiveneutrinoFlux + currentCDF*burnt
+						print(i, end='\r')
+				cummulitiveNeutrinos = CummulitiveneutrinoFlux[-len(time):]
+				Uburn = Uburn[-len(time):]
+				open('./experimental_data/'+state+'_experimental_neutrinos', 'w').close()
+				print('saving')
+				for val in cummulitiveNeutrinos:
+					with open('./experimental_data/'+state+'_experimental_neutrinos', 'a') as f:
+						f.write(str(val)+'\n')
 
-				beforeCDF.extend(currentCDF)
-				currentCDF = np.array(beforeCDF)
-				#Scale by the number of fissions
-				currentCDF = currentCDF * burnt
-				print(len(currentCDF))
+			elif state == 'on':
+				DeltaTau = time[1]-time[0]
+				CummulitiveneutrinoFlux = np.zeros(len(time))
+				for i, t in enumerate(time):
+					if i>0:
+						burnRate = Uburn[i-1]
+						burnt = DeltaTau*burnRate
+						currentCDF = CDF[:-i]
+						beforeCDF = np.zeros(i).tolist()
+						beforeCDF.extend(currentCDF)
+						currentCDF = np.array(beforeCDF)
+						CummulitiveneutrinoFlux = CummulitiveneutrinoFlux + currentCDF * burnt
+						print(i, end='\r')
+				cummulitiveNeutrinos = CummulitiveneutrinoFlux
+				open('./experimental_data/' + state + '_experimental_neutrinos', 'w').close()
+				print('saving')
+				for val in cummulitiveNeutrinos:
+					with open('./experimental_data/'+state+'_experimental_neutrinos', 'a') as f:
+						f.write(str(val)+'\n')
+			return cummulitiveNeutrinos, Uburn
+		try:
+			count = len(open('./experimental_data/'+self.state+'experimental_neutrinos').readlines())
+			if count != len(self.time):
+				self.cummulitiveNeutrinos, self.Uburn = generate(self.state, self.CDF_time, self.CDF, self.Uburn, self.time)
+		except FileNotFoundError:
+			self.cummulitiveNeutrinos, self.Uburn = generate(self.state, self.CDF_time, self.CDF, self.Uburn, self.time)
 
-				# Add it to the total
-				CummulitiveneutrinoFlux = CummulitiveneutrinoFlux + currentCDF
-
-		# Take the derivative for emission rate
-		self.neutrinoEmissionRate = dp.derivative(CummulitiveneutrinoFlux, self.time)
+		self.neutrinoEmissionRate = correct_emissions(self.state, size = len(self.time))
+		print('emission model ready to plot')
 		return self
 
 

@@ -1,18 +1,20 @@
 import ast
 
 import numpy as np
+from numpy import exp as exp
 import matplotlib.pyplot as plt
+from dependencies import derivative
 test = [1,2,3,4]
 
 # function = map(lambda t, dc: np.exp(-dc*t)/np.product([test[m]-dc for m in range(len(test)) if test[m] != dc]))
+def correct_emissions(state):
+    with open('./experimental_data/'+state+'_experimental_neutrnios', 'r') as f:
+        lines = f.readlines()
+    lines = [float(line.split('\n',1)[0]) for line in lines]
 
-beforeCDF = list(np.zeros(1).tolist())
-print(beforeCDF)
-list2 = [1,2,3,4,6]
-print(list2)
-beforeCDF.extend(list2)
-print(beforeCDF)
-
+    time = np.linspace(20, len(lines)*20, len(lines))
+    emissionRate = derivative(lines[-264:], time[-264:])
+    return emissionRate
 
 def expSum(dcList):
     # Generate exp code

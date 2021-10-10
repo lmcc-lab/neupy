@@ -336,12 +336,16 @@ class isomer():
         self.ground_energy_allowed, self.ground_estimate_flags = [np.zeros(len(self.ground_branch_ratio)).tolist() for i in range(2)]
         for i,val in enumerate(self.branch_ratio):
             self.branch_ratio[i], self.excit_energy_allowed[i], self.excit_estimate_flags[i] = fix_br(str(val))
+            self.branch_ratio_uncert[i], _, _ = fix_br(str(self.branch_ratio_uncert[i]))
         for i,val in enumerate(self.ground_branch_ratio):
             self.ground_branch_ratio[i],self.ground_energy_allowed[i],self.ground_estimate_flags[i] = fix_br(str(val))
+            self.ground_branch_ratio_uncert[i], _, _ = fix_br(str(self.ground_branch_ratio_uncert[i]))
         if self.level == 0:
             self.branchRatio = self.ground_branch_ratio
+            self.branchRatioUncert = self.ground_branch_ratio_uncert
         else:
             self.branchRatio = self.branch_ratio
+            self.branchRatioUncert = self.branch_ratio_uncert
         return self
 
     def decay_constant(self):
@@ -361,7 +365,7 @@ class isomer():
         else:
             if self.HL != 'stable' and math.isinf(self.HL) == False:
                 self.decay_const = ln2/self.HL
-                self.decay_const_uncert = self.decay_const*(self.HL/self.HL_uncert)
+                self.decay_const_uncert = self.decay_const*(self.HL_uncert/self.HL)
             else:
                 self.decay_const = 0
                 self.decay_const_uncert = 0

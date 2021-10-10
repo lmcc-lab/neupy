@@ -16,7 +16,7 @@ def plotfissionYield(ylog = True):
 	if ylog == True:
 		plt.yscale('log')
 	plt.xlabel('A')
-	plt.ylabel('Fission Yield %')
+	plt.ylabel('Fission Yield')
 	plt.grid()
 	plt.show()
 

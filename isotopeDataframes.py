@@ -27,7 +27,7 @@ if (os.access(outdir,os.F_OK))==0:
 allData = {'NU isomer': [],'Yield': [],'Yield uncertainty': [],'Energy level': [],'Decay Constant':[],'Daughters':[],'Branch Ratios': [],'Decay modes':[]}
 allData = pd.DataFrame(allData, columns = ['NU isomer','Yield','Yield uncertainty','Energy level','Decay Constant','Daughters','Branch Ratios','Decay modes'])
 
-allDecayChains = {'NU isomer': [], 'Decay Chain':[], 'Branch index':[], 'Branch Ratio':[], 'Decay Constant': [], 'Decay Mode':[], 'Missing isomers': []}
+allDecayChains = {'NU isomer': [], 'Decay Chain':[], 'Branch index':[], 'Branch Ratio':[], 'Decay Constant': [], 'Decay Mode':[], 'Missing isomers': [], 'Branch Ratio Uncert': [], 'Decay constants Uncert': []}
 allDecayChains = pd.DataFrame(allDecayChains, columns = ['NU isomer', 'Decay Chain', 'Branch index', 'Branch Ratio', 'Decay Constant', 'Decay Mode', 'Missing isomers'])
 
 
@@ -44,11 +44,11 @@ for i,a in enumerate(nuSorter.A):
         fissProd.decay_info()
         fissProd.decay_constant()
         fissProd.daughter()
-        chain = decayChain.chain(fissProd.daughters, fissProd.branchRatio, fissProd.decayModes)
+        chain = decayChain.chain(fissProd.daughters, fissProd.branchRatio, fissProd.decayModes, fissProd.branchRatioUncert)
         chain.chain_gen()
         addData = pd.DataFrame([[int(fissProd.NU), fissProd.yeild, fissProd.yeild_uncert, fissProd.level, fissProd.decay_const, fissProd.daughters, fissProd.branchRatio, fissProd.decayModes]],columns = ['NU isomer','Yield','Yield uncertainty','Energy level','Decay Constant','Daughters','Branch Ratios','Decay modes'])
         allData = allData.append(addData, ignore_index = True)
-        addChainData = pd.DataFrame([[int(fissProd.NU), chain.isomerChain, chain.chainIndex, chain.branchRatioChain, chain.decayConstChain, chain.decayModeChain, chain.Missing]], columns = ['NU isomer', 'Decay Chain', 'Branch index', 'Branch Ratio', 'Decay Constant', 'Decay Mode', 'Missing isomers'])
+        addChainData = pd.DataFrame([[int(fissProd.NU), chain.isomerChain, chain.chainIndex, chain.branchRatioChain, chain.decayConstChain, chain.decayModeChain, chain.Missing, chain.branchRatioUncertsChain, chain.decayConstUncertsChain]], columns = ['NU isomer', 'Decay Chain', 'Branch index', 'Branch Ratio', 'Decay Constant', 'Decay Mode', 'Missing isomers', 'Branch Ratio Uncert', 'Decay constants Uncert'])
         allDecayChains = allDecayChains.append(addChainData, ignore_index = True)
     except ValueError:
         fissProd.missing_isomer()
