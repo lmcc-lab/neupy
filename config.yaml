@@ -1,0 +1,29 @@
+---
+#Filtering nubase data
+nubase:
+  experiment_only: false                     # boolean, When searching nubase, you can choose to include only experimentally verified data or all. Default is False
+  set_ground_state: true                     # boolean, Set all decays to ground state, ignoring possible higher energies after first decay if True.
+
+#Decay Chain
+decay_chains:
+  max_decay_chain_depth: 15                  # int, The maximum decay chain depth. Default is 6
+  ignore_energetically_possible: false       # boolean, Ignore any theoretical branches in a decay chain. Default is False. If False, calculates what the branch ratio would be, unless there are multiple theoretical branches with no values.
+  min_branch_ratio: 0                        # int, The minimum branch ratio for a branch to be considered in a decay chain. Set -1 for all (including 0) branches. Defaults to 0
+
+#Bateman
+bateman:
+  simple: false                              # boolean, Use only simple chains, that is, linear with beta decays only. Defaults to False
+
+#Graph times and reactor events
+reactor:
+  graph_start: -3                            # float, Hrs or power to Hrs (10^(graph_start))
+  graph_end: 14                               # float, Hrs or power to Hrs (10^(graph_end))
+  resolution: 1000                           # int
+  logspace: true                             # boolean, Sets the time sampling to log if True. Uses graph_start and graph_end hrs as exponents, 10^a to 10^b
+  offset_t: 0                                # float, Hrs. Sets the time offset for plotting.
+
+#neupy chain contributions
+chain_args:
+  percent_of_final: 100                       # float, Decimal as percent - percent of full result
+  top_num: 2612                                # int, Use the top # of contributing chains - number of most contributing chains. 2612 total chains
+  pref_percent: true                         # Prefer percentage value as the chain contribution decider if True. Otherwise use top number of contributions.

@@ -1,0 +1,36 @@
+---
+prefix: 
+  'y': 10.e-24
+  'z': 10.e-21
+  'a': 10.e-18
+  'f': 10.e-15
+  'p': 10.e-12
+  'n': 10.e-9
+  'u': 10.e-6
+  'm': 10.e-3
+  'c': 10.e-2
+  'd': 10.e-1
+  'da': 10.e+1
+  'h': 10.e+2
+  'k': 10.e+3
+  'M': 10.e+6
+  'G': 10.e+9
+  'T': 10.e+12
+  'P': 10.e+15
+  'E': 10.e+18
+  'Z': 10.e+21
+  'Y': 10.e+24
+
+unit:
+  's': 1
+  'm': 60
+  'h': 3600
+  'd': 86400
+  'y': 31536000
+
+energy_units: 'keV'
+
+nubase_symbols:
+  'is': 'natural abundance'
+  '?': 'energetically allowed'
+  '=?': 'none'
