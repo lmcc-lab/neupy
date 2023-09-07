@@ -1,5 +1,0 @@
-# ignore csv folders
-/Contributing_chains/**
-/.idea/**
-/.Thesis figures/
-__pycache__

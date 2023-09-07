@@ -1,4 +1,4 @@
-from databases.SQLite_gen import *
+from databases.load_databases import *
 
 
 def nubase_selector_test():
@@ -12,3 +12,5 @@ def make_db_test():
     make_database(nubase, fission, debug=True)
 
 
+def load_config_test():
+    pprint(load_config('databases/'))

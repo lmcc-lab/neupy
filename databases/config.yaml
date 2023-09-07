@@ -32,5 +32,270 @@ energy_units: 'keV'
 
 nubase_symbols:
   'is': 'natural abundance'
-  '?': 'energetically allowed'
-  '=?': 'none'
+  '?': 'expected but not observed'
+  '=?': 'observed but not experimentally measured'
+  '#': derived from trends in neighboring nuclides or from teorethical predictions
+  '*': directly measured
+  'T': isospin
+
+
+nubase2020:
+  columns:
+    '1:3': 
+      quantity: AAA
+      format: a3
+      description: Mass Number (AAA)
+    '5:8':
+      quantity: ZZZi
+      format: a4
+      description: Atomic Number (ZZZ); i=0 (gs); i=1,2 (isomers); i=3,4 (levels); i=5 (resonance); i=8,9 (IAS) i=3,4,5,6 can also indicate isomers (when more than two isomers are presented in a nuclide)
+    '12:16': 
+      quantity: A El
+      format: a5
+      description: A Element
+    '17:17':
+      quantity: s
+      format: a1
+      description: s=m,n (isomers); s=p,q (levels); s=r (reonance); s=i,j (IAS); s=p,q,r,x can also indicate isomers (when more than two isomers are presented in a nuclide)
+    '19:31':
+      quantity: 'Mass #'
+      format: f13.6
+      description: Mass Excess in keV (# from systematics)
+    '32:42':
+      quantity: 'dMass #'
+      format: f11.6
+      description: Mass Excess uncertainty in keV (# from systematics)
+    '43:54':
+      quantity: 'Exc #'
+      format: f12.6
+      description: Isomer Excitation Energy in keV (# from systematics)
+    '55:65':
+      quantity: 'dE #'
+      format: f11.6
+      description: Isomer Excitation Energy uncertainty in keV (# from systematics)
+    '66:67':
+      quantity: Orig
+      format: a2
+      description: Origin of Excitation Energy
+    '68:68':
+      quantity: Isom.Unc
+      format: a1
+      description: Isom.Unc = *  (gs and isomer ordering is uncertain)
+    '69:69':
+      quantity: Isom.Inv
+      format: a1
+      description: Isom.Inv = &  (the ordering of gs and isomer is reversed compared to ENSDF)
+    '70:78':
+      quantity: 'T #'
+      format: f9.4
+      description: Half-life (# from systematics); stbl=stable; p-unst=particle unstable
+    '79:80':
+      quantity: unit T
+      format: a2
+      description: Half-life unit
+    '82:88':
+      quantity: dT
+      format: a7
+      description: Half-life uncertainty
+    '89:102':
+      quantity: Jpi */#/T=
+      format: a14
+      description: 'Spin and Parity (* directly measured; # from systematics; T=isospin)'
+    '103:104':
+      quantity: Ensdf year
+      format: a2
+      description: Ensdf update year
+    '115:118':
+      quantity: Discovery
+      format: a4
+      description: Year of Discovery
+    '120:209':
+      quantity: BR
+      format: a90
+      description: Decay Modes and their Intensities and Uncertanties in %; IS = Isotopic Abundance in %
+  format_key:
+    a#: 'string with length #'
+    fn.m: 'float with n whole places and m decimals places'
+  decay_mode_key:
+    transform_key: (delta A, delta Z)
+    B+: 
+      description: Beta plus decay (EC + e+)
+      transform: (0, -1)
+    2B+: 
+      description: Double beta plus decay
+      transform: (0, -2)
+    B-: 
+      description: Beta minus decay
+      transform: (0, +1)
+    2B-: 
+      description: Double beta minus decays
+      transform: (0, +2)
+    e+: 
+      description: Positron emission
+      transform: (0, +1)
+    EC: 
+      description: Electron capture
+      transform: (0, -1)
+    EC+B+: 
+      description: Electron capture and beta plus emission # Confirm this is true
+      transform: (0, +1)
+    A: 
+      description: Alpha particle emission
+      transform: (-4, -2)
+    B-A: 
+      description: Beta minus alpha
+      transform: (-4, -1)
+    B-n: 
+      description: Beta minus delayed neutron emission
+      transform: (-1, +1)
+    B-2n: 
+      description: Beta minus delayed 2 neutrons
+      transform: (-2, +1)
+    B-3n: 
+      description: Beta minus and delayed 3 neutrons
+      transform: (-3, +1)
+    B-4n: 
+      description: Beta minus and delayed 4 neutrons
+      transform: (-4, +1)
+    B-p: 
+      description: Beta minus and delayed proton emission
+      transform: (-1, 0)
+    B-d: 
+      description: Beta minus and delayed deuteron emission
+      transform: (-2, 0)
+    B-t: 
+      description: Beta minus and delayed triton emission
+      transform: (-3, 0)
+    B-SF: 
+      description: Beta minus delayed fission
+      transform: (0, +1)
+    n: 
+      description: Neutron emission
+      transform: (-1, 0)
+    2n: 
+      description: 2 neutron emission
+      transform: (-2, 0)
+    3n: 
+      description: 3 neutron emission
+      transform: (-3, 0)
+    p: 
+      description: proton emission
+      transform: (-1, -1)
+    2p: 
+      description: 2 proton emissions
+      transform: (-2, -2)
+    3p: 
+      description: 3 proton emissions
+      transform: (-3, -3)
+    B+p: 
+      description: Beta plus and delayed proton emission
+      transform: (-1, -2)
+    B+2p: 
+      description: Beta plus and delayed 2 proton emission
+      transform: (-2, -3)
+    B+3p: 
+      description: Beta plus and delayed 3 proton emission
+      transform: (-2, -4)
+    B+A: 
+      description: Beta plus and delayed alpha emission
+      transform: (-4, -3)
+    B+pA: 
+      description: Beta plus and delayed proton and alpha particle emissions
+      transform: (-5, -4)
+    B+SF: 
+      description: Beta plus delayed fission
+      transform: (0, -1)
+    B: 
+      description: unknown # Probably an error in nubase. Only occurs for 126Pd
+      transform: None
+    IT: 
+      description: Internal transition
+      transform: (0, 0)
+    d: 
+      description: Deuteron emission
+      transform: (-2, -1)
+    IS: 
+      description: Isotope abundance
+      transform: None
+    SF: 
+      description: delayed spontaneous fission
+      transform: None
+  equality_symbols: ['=','>','<', '~', '?']
+
+nubase2016:
+  columns:
+    '1:3': 
+      quantity: AAA
+      format: a3
+      description: Mass Number (AAA)
+    '5:8':
+      quantity: ZZZi
+      format: a4
+      description: Atomic Number (ZZZ); i=0 (gs); i=1,2 (isomers); i=3,4 (levels); i=5 (resonance); i=8,9 (IAS) i=3,4,5,6 can also indicate isomers (when more than two isomers are presented in a nuclide)
+    '12:16': 
+      quantity: A El
+      format: a5
+      description: A Element
+    '17:17':
+      quantity: s
+      format: a1
+      description: s=m,n (isomers); s=p,q (levels); s=r (reonance); s=i,j (IAS); s=p,q,r,x can also indicate isomers (when more than two isomers are presented in a nuclide)
+    '19:31':
+      quantity: 'Mass #'
+      format: f13.6
+      description: Mass Excess in keV (# from systematics)
+    '32:42':
+      quantity: 'dMass #'
+      format: f11.6
+      description: Mass Excess uncertainty in keV (# from systematics)
+    '43:54':
+      quantity: 'Exc #'
+      format: f12.6
+      description: Isomer Excitation Energy in keV (# from systematics)
+    '55:65':
+      quantity: 'dE #'
+      format: f11.6
+      description: Isomer Excitation Energy uncertainty in keV (# from systematics)
+    '66:67':
+      quantity: Orig
+      format: a2
+      description: Origin of Excitation Energy
+    '68:68':
+      quantity: Isom.Unc
+      format: a1
+      description: Isom.Unc = *  (gs and isomer ordering is uncertain)
+    '69:69':
+      quantity: Isom.Inv
+      format: a1
+      description: Isom.Inv = &  (the ordering of gs and isomer is reversed compared to ENSDF)
+    '70:78':
+      quantity: 'T #'
+      format: f9.4
+      description: Half-life (# from systematics); stbl=stable; p-unst=particle unstable
+    '79:80':
+      quantity: unit T
+      format: a2
+      description: Half-life unit
+    '82:88':
+      quantity: dT
+      format: a7
+      description: Half-life uncertainty
+    '89:102':
+      quantity: Jpi */#/T=
+      format: a14
+      description: 'Spin and Parity (* directly measured; # from systematics; T=isospin)'
+    '103:104':
+      quantity: Ensdf year
+      format: a2
+      description: Ensdf update year
+    '115:118':
+      quantity: Discovery
+      format: a4
+      description: Year of Discovery
+    '120:209':
+      quantity: BR
+      format: a90
+      description: Decay Modes and their Intensities and Uncertanties in %; IS = Isotopic Abundance in %
+  format_key:
+    a#: 'string with length #'
+    fn.m: 'float with n whole places and m decimals places'      
