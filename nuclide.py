@@ -199,82 +199,82 @@ class Nuclide:
     
     @staticmethod
     def _make_folder(path: str) -> None:
+        """Makes a folder given the desired path, only if the path doesn't already exist"""
         if path[-1] == '/':
             path = path[:-2]
         if path not in os.listdir():
             os.makedirs(path)
 
-    def display_decay_chain(self, save_path='decay_chains/'):
+    def display_decay_chain(self, save_path: str='decay_chains/') -> List[pd.DataFrame]:
         """
+        Take the broken decay chains and return the same pandas dataframe but with the nuclide
+        symbol instead of the nuclide object location. This is used for visually checking that
+        the decay chain makes sense and is what was expected. This method also saves a mermaid
+        flow chart representing this decay chain and saves it by default in 'decay_chains/' 
+        with the name '{nuclide symbol} decay chain.md'. This can then be viewed on platforms
+        such as github or Obsidian, or any markdown viewer with mermaid available. 
+
+        ## Params
+        save_path: str, default is decay_chains/, the path you want to save your mermaid.md
+                        diagrams
         
+        ## Returns
+        replica_decay_chain: List[pd.DataFrame], a list of the linear branches an element can
+                                                 decay down, with the symbols shown in the
+                                                 nuclide column for ease of reading.
         
         """
-        if isinstance(self.decay_chain, pd.DataFrame):
+        if isinstance(self.decay_chain, pd.DataFrame):                      # Break the decay chain branches if not already done
             self.break_decay_chain_branches()
         
         mermaid_template = \
 '''
 ```mermaid 
 flowchart TD
-'''
-        record_connections = []
-        replica_decay_chain = [df.copy() for df in self.decay_chain]
-        for i, dc in enumerate(replica_decay_chain):
-            for index, row in dc.iterrows():
-                cur_element_sym = row.nuclide.nuclide_nubase_info.loc[row.nuclide.AZI, 'A El']
-                decay_mode = row['dm']
-                if not index:
-                    mermaid_flow = self.mermaid_flowchart_template(self.nuclide_nubase_info.loc[self.AZI, 'A El'], cur_element_sym, note=decay_mode)
-                    if mermaid_flow not in record_connections:
+'''                                                                 # Excuse the ugly syntax, this is just to get the
+                                                                    # right spacing for nice looking .md files. This 
+                                                                    # will change in the future to reference a variable
+                                                                    # in a different file. 
+        record_connections = []                                     # Record connections records what mermaid connections
+                                                                    # have already been drawn (stops copies).
+        replica_decay_chain = [df.copy() for df in self.decay_chain]# Make copy of self.decay_chain so we don't change 
+                                                                    # self.decay_chain.
+        for i, dc in enumerate(replica_decay_chain):                # go through each of the linear paths
+            for index, row in dc.iterrows():                        # Go through the elements for each generation of a linear path
+                cur_element_sym = row.nuclide.nuclide_nubase_info.loc[row.nuclide.AZI, 'A El'] # get the nuclide symbol of the current nuclide
+                decay_mode = row['dm']                              # get the decay mode of the current nuclide
+                if not index:                                       # If index==0, then this will be a connection from the original nuclide
+                    mermaid_flow = self.mermaid_flowchart_template(self.nuclide_nubase_info.loc[self.AZI, 'A El'], # Make the mermaid flow chart
+                                                                   cur_element_sym,                                # for this connection
+                                                                    note=decay_mode)
+                    if mermaid_flow not in record_connections:      # Only add this to the mermaid template if it isn't already there
                         record_connections.append(mermaid_flow)
                         mermaid_template += \
 f'''{mermaid_flow}
 '''
-                if index == dc.shape[0]-1:
+                if index == dc.shape[0]-1:                          # Stop if this is the last element in the linear chain
                     break
-                next_nuclide = dc.loc[index+1, 'nuclide']
-                this_decay_mode = dc.loc[index+1, 'dm']
-                next_element_sym = next_nuclide.nuclide_nubase_info.loc[next_nuclide.AZI, 'A El']
+                next_nuclide = dc.loc[index+1, 'nuclide']           # Otherwise, get the next nuclide in this chain
+                this_decay_mode = dc.loc[index+1, 'dm']             # Get the decay mode of this nuclide (remember self.decay_mode is
+                                                                    # nuclide, the decay mode that got to this nuclide).
+                next_element_sym = next_nuclide.nuclide_nubase_info.loc[next_nuclide.AZI, 'A El']  # Get the next nuclides symbol
                 
-                mermaid_flow = self.mermaid_flowchart_template(cur_element_sym, next_element_sym, note=this_decay_mode)
-                # print(mermaid_flow)
-                if mermaid_flow in record_connections:
+                mermaid_flow = self.mermaid_flowchart_template(cur_element_sym, next_element_sym, note=this_decay_mode) # Create the mermaid
+                                                                    # flow chart
+                if mermaid_flow in record_connections:              # Skip adding it if it's already there
                     continue
-                record_connections.append(mermaid_flow)
+                record_connections.append(mermaid_flow)             # Add this mermaid flowchart if it hasn't already been used and record
+                                                                    # that it's been used
                 mermaid_template += \
 f'''{mermaid_flow}
 ''' 
-            dc['nuclide'] = dc['nuclide'].apply(lambda row: row.nuclide_nubase_info.loc[row.AZI, 'A El'])
+            dc['nuclide'] = dc['nuclide'].apply(lambda row: row.nuclide_nubase_info.loc[row.AZI, 'A El']) # Convert the whole nuclide column
+                                                                                                          # to the symbols
         mermaid_template += '```'
         
-        self._make_folder(save_path)
-        with open(f"{save_path}{self.nuclide_nubase_info.loc[self.AZI, 'A El']} decay chain.md", 'w+') as f:
+        self._make_folder(save_path)                                 # make the folder (if needed)
+        with open(f"{save_path}{self.nuclide_nubase_info.loc[self.AZI, 'A El']} decay chain.md", 'w+') as f: # save the mermaid file
             f.writelines(mermaid_template)
             
-        return replica_decay_chain
+        return replica_decay_chain                                  # return the updated readable decay chain  
         
-
-
-        
-
-
-
-
-
-nuclide = Nuclide(Z=82, A=178)
-
-nuclide.make_decay_chain()
-print('decay chain before breaking')
-print(nuclide.decay_chain)
-
-nuclide.break_decay_chain_branches()
-print('decay chain after breaking')
-print(nuclide.decay_chain)
-
-display = nuclide.display_decay_chain()
-print('display')
-pprint(display)
-
-W183 = Nuclide(Z=64, A=158)
-W183.all_nubase_data_on_nuclide()
-print(W183.nuclide_nubase_info[['A El', 'T #', 'BR']])
