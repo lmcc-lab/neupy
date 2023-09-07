@@ -83,6 +83,7 @@ class Nuclide:
 
         # Initilise some params
         self.decay_chain = pd.DataFrame([], columns=['nuclide', 'dm'])
+        self.allow_energetically_possible_decay_paths = True
 
     @staticmethod
     def _azi_gen(A, Z, level=0):
@@ -97,15 +98,21 @@ class Nuclide:
         """
         self.nuclide_nubase_info = self.nubase.loc[(self.nubase['A'] == self.A) & (self.nubase['Z'] == self.Z)]
 
-    def make_decay_chain(self, include_isomer_decay=False, path_num=''):
+    def make_decay_chain(self, include_isomer_decay=False, allow_energtically_possible=True, path_num=''):
         """
         Decay chains are generated using the decay mode information for the nuclide for each generation of the decay chain. 
         
-        If the fission product is in a higher energy level, then you can choose whether to include it's internal decay as part of the decay chain
-        by setting include_isomer_decay to True, defaul is False.
-
         This method recursively generates the decay modes, only exiting the recursion if it meets a stable nuclide. 
+
+        ## Params
+        include_isomer_decay: bool=False, If the fission product is in a higher energy level, then you can choose whether to include 
+                                            it's internal decay as part of the decay chain by setting include_isomer_decay to True, 
+                                            default is False.
+        allow_energetically_possible: bool=False, Some decay modes are energetically possible but not observed. You can choose to
+                                                  allow or disallow these decay paths using this toggle. By default it's set to True.
+        path_num: leave as '', it is passed on during the recursion.
         """
+        self.allow_energetically_possible_decay_paths = allow_energtically_possible
         if not include_isomer_decay:                                    # If this flag is False, then set nuclide level to 0 and assume no isomer
             self.level = 0                                              # decay. Will make True case in future
             self.AZI = self._azi_gen(self.A, self.Z, self.level)
@@ -118,6 +125,9 @@ class Nuclide:
         path_num_offset = 0
         for new_path_num, path in enumerate(paths):                     # Go through the decay modes of the nuclide, labeling the path num using new_path_num
 
+            if ('?' in path and not '=?' in path) and not allow_energtically_possible: # If allow_energyetically_possible is set to True, then nothing will happen
+                continue                                                               # Otherwise, if False, then it will check if only '?' is present in BR path
+                                                                                       # If it is then we skip this one.
             for sym in es:                                              # This section is just to split the decay mode from the branch ratio, where we split based on the
                 if sym not in path:                                     # different possible equality symbols used. For example, B-=100 or A~90 etc.
                     continue                                            # 
@@ -278,3 +288,5 @@ f'''{mermaid_flow}
             
         return replica_decay_chain                                  # return the updated readable decay chain  
         
+
+
