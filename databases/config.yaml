@@ -34,7 +34,7 @@ nubase_symbols:
   'is': 'natural abundance'
   '?': 'expected but not observed'
   '=?': 'observed but not experimentally measured'
-  '#': derived from trends in neighboring nuclides or from teorethical predictions
+  '#': derived from trends in neighboring nuclides or from theoretical predictions
   '*': directly measured
   'T': isospin
 

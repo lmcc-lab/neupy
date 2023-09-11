@@ -138,7 +138,7 @@ def load_all_fy_databases(path: str='databases/') -> dict:
         fiss_data = pd.read_csv(path + f, sep="	", header=0)
         fiss_data.columns = ["Z", "A", "Level", "YI", "YI uncert"]
         fiss_data['AZI'] = fiss_data['A'].apply(lambda A: ''.join(["0"]*(3-len(f"{A}")))+f"{A}") + fiss_data['Z'].apply(lambda Z: ''.join(["0"]*(3-len(f"{Z}"))) + f"{Z}") + fiss_data['Level'].apply(lambda level: f"{level}")
-        fiss_data.index = fiss_data['AZI']
+        fiss_data = fiss_data.set_index('AZI')
         db[key] = fiss_data
     return db
 

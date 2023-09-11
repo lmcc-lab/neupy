@@ -3,7 +3,7 @@ from databases import load_databases as ld
 from pprint import pprint
 import logging
 import numpy as np
-from typing import List
+from typing import List, Union
 import os
 
 
@@ -121,7 +121,7 @@ class Nuclide:
         paths = br.split(';')                                           # Break them into the different decay modes (seperated by ';')
         decay_mode_key = self.nubase_config['decay_mode_key']           # Get the key from the config file
         es = self.nubase_config['equality_symbols']                     # Get the equality symbols from the config file
-        decay_paths = pd.DataFrame([], columns=['nuclide', 'dm'])       # Initialise the decay_paths dataframe. Dataframe structure is | decay_path (Index) | nuclide | dm |  
+        decay_paths = pd.DataFrame([], columns=['nuclide', 'dm', 'intensity', 'dintensity'])       # Initialise the decay_paths dataframe. Dataframe structure is | decay_path (Index) | nuclide | dm |  
         path_num_offset = 0
         for new_path_num, path in enumerate(paths):                     # Go through the decay modes of the nuclide, labeling the path num using new_path_num
 
@@ -132,6 +132,9 @@ class Nuclide:
                 if sym not in path:                                     # different possible equality symbols used. For example, B-=100 or A~90 etc.
                     continue                                            # 
                 dm, ratio = path.split(sym, 1)                          #
+                dratio = 0
+                if ' ' in ratio:
+                    ratio, dratio = ratio.split(' ', 1)[1]
                 if half_life == 'stbl':                                 # We also check if the decay mode is IS, meaning the nuclide is stable and it's giving the abundance
                     return                                              # instead. We return out of this function if this is true.
                 break                                                   #
@@ -147,7 +150,7 @@ class Nuclide:
                                                                                                                                             # the next nuclide in the decay chain
                                                                                                                                             # all databases are passed in to reduce
                                                                                                                                             # RAM usage
-            df = pd.DataFrame({"nuclide": [next_nuclide], "dm": [dm]}, index=[path_num+str(new_path_num - path_num_offset)])  # Update the decay_path dataframe with the next nuclide. Path_num
+            df = pd.DataFrame({"nuclide": [next_nuclide], "dm": [dm], "intensity": [ratio], 'dintensity': [dratio]}, index=[path_num+str(new_path_num - path_num_offset)])  # Update the decay_path dataframe with the next nuclide. Path_num
             decay_paths = pd.concat([decay_paths, df])                                                      # is updated as a string representing the decay path of the decay
                                                                                                             # chain. For example, if path_num is 0, and new_path_num is 1, then
                                                                                                             # the index is 01
@@ -159,7 +162,8 @@ class Nuclide:
             path['nuclide'].make_decay_chain(include_isomer_decay=include_isomer_decay, path_num=index) # Go through the daughter nuclides of this generation and recursively make
             self.decay_chain = pd.concat([self.decay_chain, path['nuclide'].decay_chain])               # the next generation, passing in the parents path_num to keep track of 
                                                                                                         # the decay chain family. When the recursion is done, add this to self.decay_chain
-    
+
+
     def break_decay_chain_branches(self) -> None:
         """
         This method seperates the decay chains generated using self.make_decay_chain into the individual 
@@ -184,6 +188,8 @@ class Nuclide:
                                                                     # full before moving on.
             this_path = {"nuclide": [row.nuclide], 
                          "dm": [row.dm],
+                         "intensity": [row.intensity],
+                         "dintensity": [row.dintensity],
                          "path_index": [path_num]}
             flag_used = [path_num]                                  # Record what paths have been used
             for follow_path in range(1, len(path_num)):             # Index through the path_num, excluding the last number. For example, if the path_num is 
@@ -192,11 +198,15 @@ class Nuclide:
                 prev_nuclide = replica_decay_chain.loc[prev_nuclide_path]                       # get previous nuclide
                 this_path["nuclide"].append(prev_nuclide.nuclide)                               # Update the decay path
                 this_path['dm'].append(prev_nuclide.dm)
+                this_path['intensity'].append(prev_nuclide.intensity)
+                this_path['dintensity'].append(prev_nuclide.dintensity)
                 this_path['path_index'].append(prev_nuclide_path)
-                flag_used.append(prev_nuclide_path)                                             # Add used flag
+                flag_used.append(prev_nuclide_path)                                             # Add used flag            
             replica_decay_chain.loc[flag_used, 'used'] = True       # Update replica_decay_chain used column with used flag
             this_path['nuclide'].reverse()                          # reverse order of this_path so it's in order [Parent, child, grandchild, ...] for a branch
             this_path['dm'].reverse()
+            this_path['intensity'].reverse()
+            this_path['dintensity'].reverse()
             this_path['path_index'].reverse()
             this_path = pd.DataFrame(this_path)
             linear_chain.append(this_path)                          # Add this path to the linear chain
@@ -204,7 +214,7 @@ class Nuclide:
 
 
     @staticmethod
-    def mermaid_flowchart_template(element: str, connect_to: str, note: str=''):
+    def _mermaid_flowchart_template(element: str, connect_to: str, note: str=''):
         return f'{element} --"{note}"--> {connect_to}'
     
     @staticmethod
@@ -254,12 +264,14 @@ flowchart TD
                 cur_element_sym = row.nuclide.nuclide_nubase_info.loc[row.nuclide.AZI, 'A El'] # get the nuclide symbol of the current nuclide
                 decay_mode = row['dm']                              # get the decay mode of the current nuclide
                 if not index:                                       # If index==0, then this will be a connection from the original nuclide
-                    mermaid_flow = self.mermaid_flowchart_template(self.nuclide_nubase_info.loc[self.AZI, 'A El'], # Make the mermaid flow chart
-                                                                   cur_element_sym,                                # for this connection
-                                                                    note=decay_mode)
-                    if mermaid_flow not in record_connections:      # Only add this to the mermaid template if it isn't already there
-                        record_connections.append(mermaid_flow)
-                        mermaid_template += \
+                    if decay_mode is not None:
+
+                        mermaid_flow = self._mermaid_flowchart_template(self.nuclide_nubase_info.loc[self.AZI, 'A El'], # Make the mermaid flow chart
+                                                                    cur_element_sym,                                # for this connection
+                                                                        note=decay_mode)
+                        if mermaid_flow not in record_connections:      # Only add this to the mermaid template if it isn't already there
+                            record_connections.append(mermaid_flow)
+                            mermaid_template += \
 f'''{mermaid_flow}
 '''
                 if index == dc.shape[0]-1:                          # Stop if this is the last element in the linear chain
@@ -269,7 +281,7 @@ f'''{mermaid_flow}
                                                                     # nuclide, the decay mode that got to this nuclide).
                 next_element_sym = next_nuclide.nuclide_nubase_info.loc[next_nuclide.AZI, 'A El']  # Get the next nuclides symbol
                 
-                mermaid_flow = self.mermaid_flowchart_template(cur_element_sym, next_element_sym, note=this_decay_mode) # Create the mermaid
+                mermaid_flow = self._mermaid_flowchart_template(cur_element_sym, next_element_sym, note=this_decay_mode) # Create the mermaid
                                                                     # flow chart
                 if mermaid_flow in record_connections:              # Skip adding it if it's already there
                     continue
@@ -287,6 +299,112 @@ f'''{mermaid_flow}
             f.writelines(mermaid_template)
             
         return replica_decay_chain                                  # return the updated readable decay chain  
+    
+    def convert_half_life(self, half_life, unit):
+        if not isinstance(half_life[0], float):
+            try:
+                half_life = (float(half_life[0]), half_life[1])
+            except ValueError:
+                return half_life
+        prefix = 1
+        if len(unit)>1:
+            prefix = self.config['prefix'][unit[0]]
+        half_life = (half_life[0] * prefix * self.config['unit'][unit[-1]], half_life[1])
+        return half_life
+    
+    @staticmethod
+    def _check_half_life_flags(nubase_half_life, allow_theoretical):
+        if not isinstance(nubase_half_life, tuple):
+            return nubase_half_life, None
+        if nubase_half_life[1] == '#' and allow_theoretical:
+            return nubase_half_life[0], '#'
+        return nubase_half_life
+    
+    @staticmethod
+    def bateman_equation_latex(n):
+        for nn in range(n):
+            prod_str = ''.join(['\lambda_{{{0}}}'.format(i+1) for i in range(nn)])
+            frac_str = ''
+            for i in range(nn+1):
+                denom_str = ''.join(['(\lambda_{{{0}}}-\lambda_{{{1}}})'.format(j+1, i+1) for j in range(nn+1) if j != i])
+                frac_str += '{1}{0} e^{{-\lambda_{{{2}}}t}}{3}'.format(r"\frac{" if nn>0 else "","" if i==0 else "+", i+1, "}}{{{0}}}".format(denom_str) if nn > 0 else "")
+            print(r'N_{{{0}}}(t) &= N_1(0)\times{1}\times\left({2}\right)'.format(nn+1, prod_str, frac_str), r'\\')
+
+    def bateman_equation(self, row, t: Union[list, np.ndarray], lambdai, N10=1):
+        """
+        lambdai is an array of length n, [lambda0, lambda1, ... lambdan], where we are calculating Nn
+
+        Bateman equations are
+
+        dN1(t)/dt = -λ1N1(t)
+        dNi(t)/dt = -λiNi(t) + λ(i-1)N(i-1)(t)
+        dNk(t)/dt = λ(k-1)N(k-1)(t)
+        
+        With general solutions
+        Nn(t) = N1(0)(Π_{i=1}^{n-1}λi)Σ_{i=1}^{n} ( e^{-λit} / (Π_{j=1, j≠i}^{n} (λj - λi))
+        """
+        n = row.name
+        prod = np.prod(lambdai[:n])
+        frac = 0
+        for i, L in enumerate(lambdai[:n+1]):
+            denom = np.prod([l-L for j, l in enumerate(lambdai[:n+1]) if i != j])
+            exp_term = np.exp(-L*t)
+            frac += exp_term/denom
+        return N10 * prod * frac
+
+    def get_half_life_and_convert(self, chain_index, allow_theoretical):
+        linear_chain = self.decay_chain[chain_index]
+        linear_chain['half_life'] = linear_chain['nuclide'].apply(
+            lambda row: self.convert_half_life(self._check_half_life_flags(row.nuclide_nubase_info.loc[row.AZI, 'T #'], allow_theoretical),
+                                               row.nuclide_nubase_info.loc[row.AZI, 'unit T']))
+        linear_chain['half_life_uncert'] = linear_chain['nuclide'].apply(
+            lambda row: self.convert_half_life(self._check_half_life_flags(row.nuclide_nubase_info.loc[row.AZI, 'dT'], allow_theoretical),
+                                               row.nuclide_nubase_info.loc[row.AZI, 'unit T']))
+
+    @staticmethod
+    def convert_half_lives_to_decay_constant(half_life):
+        return np.log(2)/half_life
+
+    def concentration_profiles(self, time, allow_theoretical=True, *args, **kwargs):
+        """
+        calculate the concentration profiles of your decay chains for this nuclide. These will be saved
+        in self.decay_chain in a new column. These concentrations are calculated using the Bateman equations
+
+        ## Params
+        *args, passed to self.make_decay_chain
+        """
+        
+        if isinstance(self.decay_chain, pd.DataFrame):
+            if self.decay_chain.shape[0] == 0:
+                self.make_decay_chain(*args, **kwargs)
+            self.break_decay_chain_branches()
+        
+        
+        for chain_index, linear_chain in enumerate(self.decay_chain):
+            self_chain_data = pd.DataFrame({"nuclide": [self], "dm": [None], "path_index": [None]})
+            self.decay_chain[chain_index] = pd.concat([self_chain_data, linear_chain], ignore_index=True)
+            self.get_half_life_and_convert(chain_index, allow_theoretical)
+            half_lives = self.decay_chain[chain_index]['half_life'].values
+            lambdai = [0 if hl[0] == 'stbl' else self.convert_half_lives_to_decay_constant(hl[0]) for hl in half_lives]
+            self.decay_chain[chain_index]['concentration_profile'] = self.decay_chain[chain_index].apply(lambda row: self.bateman_equation(row, time, lambdai), axis=1)
         
 
 
+if __name__ == "__main__":
+    nuclide = Nuclide(Z=52, A=135)
+
+    nuclide.make_decay_chain()
+    # nuclide.display_decay_chain()
+
+    t = np.logspace(0, 16, 100)
+    # nuclide.bateman_equation_latex(2)
+    nuclide.concentration_profiles(t)
+    print(nuclide.decay_chain)
+    # print(nuclide.display_decay_chain())
+    import matplotlib.pyplot as plt
+    for linear_chain in nuclide.decay_chain:
+        concentrations = linear_chain['concentration_profile']
+        plt.stackplot(t, *concentrations, labels=[nuc.nuclide_nubase_info.loc[nuc.AZI, 'A El'] for nuc in linear_chain['nuclide'].values])
+    plt.xscale('log')
+    plt.legend()
+    plt.show()
