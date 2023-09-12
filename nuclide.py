@@ -9,7 +9,8 @@ import os
 
 class Nuclide:
 
-    def __init__(self, A: int=None, Z: int=None, level: int = 0, AZI:int=None, nubase: pd.DataFrame=None, fy: dict=None, config_file: dict=None, nubase_config: dict=None, search_in_fy=False) -> None:
+    def __init__(self, A: int=None, Z: int=None, level: int = 0, AZI:int=None, nubase: pd.DataFrame=None, fy: dict=None, config_file: dict=None, nubase_config: dict=None, search_in_fy=False,
+                 force_level_0 = True) -> None:
         """
         Search for a nuclide in the Nubase and Fission databases. If no database is provided in arguements
         nubase and fy, then it will load whatever databases it can from the databases folder. 
@@ -34,6 +35,7 @@ class Nuclide:
             raise ValueError("A and Z must be provided or AZI")
         
         if AZI is not None:
+            AZI = AZI[:6] + '0' if force_level_0 else AZI
             self.AZI = AZI
             self.A = int(AZI[:3])
             self.Z = int(AZI[3:6])
@@ -80,7 +82,10 @@ class Nuclide:
 
         # Find AZI in nubase
         self.nuclide_nubase_info = self.nubase.loc[self.nubase['AZI'] == self.AZI]
-
+        self.found = True
+        if self.nuclide_nubase_info.shape[0] == 0:
+            self.found = False
+        
         # Initilise some params
         self.decay_chain = pd.DataFrame([], columns=['nuclide', 'dm'])
         self.allow_energetically_possible_decay_paths = True
@@ -139,7 +144,7 @@ class Nuclide:
                     return                                              # instead. We return out of this function if this is true.
                 break                                                   #
             
-            transform_key = decay_mode_key[dm]['transform']
+            transform_key = decay_mode_key.get(dm, {"transform": 'None'})['transform']
             if transform_key == 'None':
                 path_num_offset += 1
                 continue
@@ -363,6 +368,8 @@ f'''{mermaid_flow}
 
     @staticmethod
     def convert_half_lives_to_decay_constant(half_life):
+        if half_life == '':
+            return 0
         return np.log(2)/half_life
 
     def concentration_profiles(self, time, allow_theoretical=True, *args, **kwargs):

@@ -1,11 +1,10 @@
 from nuclide import Nuclide, pprint, pd, np
 from databases.load_databases import load_all_fy_databases
-
+from tqdm import tqdm
 
 class NeutrinoEmission:
 
-    def __init__(self, **fy_kwargs) -> None:
-        self.fy = load_all_fy_databases(**fy_kwargs)
+    def __init__(self) -> None:
         self.neutrino_table = {"B-": (1, -1, 'e'),
                                "B+": (1, 1, 'e'),
                                "2B-": (2, -1, 'e'),
@@ -109,23 +108,48 @@ class NeutrinoEmission:
                   f"Slide index 2: Time, with length {cum_neutrino_test[2]}")
 
     
-class Neupy:
+class Neupy(NeutrinoEmission):
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, **fy_kwargs) -> None:
+        super().__init__()
+        self.fy = load_all_fy_databases(**fy_kwargs)
+        self.nuclide_template = Nuclide(1, 1)
+        self.missing_nuclides = []
+    
+    def fission_induced_neutrinos(self, time, **flag_kwargs):
+        for fission_element, db in self.fy.items():
+            for i, row in tqdm(db.iterrows(), total=db.shape[0]):
+                AZI = row.name
+
+                nuclide = Nuclide(AZI=AZI, nubase=self.nuclide_template.nubase, fy=self.fy, config_file=self.nuclide_template.config, nubase_config=self.nuclide_template.nubase_config)
+                if not nuclide.found:
+                    self.missing_nuclides.append(AZI)
+                    continue
+
+                nuclide.concentration_profiles(time, **flag_kwargs)
+                for linear_chain in nuclide.decay_chain:
+                    self.cumulative_neutrino_profile(linear_chain, **flag_kwargs)
+                # print(nuclide.decay_chain)
+
+        
 
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    neupy = NeutrinoEmission()
-    nuclide = Nuclide(135, 52)
-    nuclide.make_decay_chain()
-    nuclide.break_decay_chain_branches()
-    t = np.logspace(0, 16, 100)
-    nuclide.concentration_profiles(t)
-    for linear_chain in nuclide.decay_chain:
-        neupy.cumulative_neutrino_profile(linear_chain, ignore_matter_type=True, ignore_flavour=True)
-        neupy.check_neutrino_profile_type(linear_chain)
-        plt.stackplot(t, *linear_chain['cum_neut'].values)
-    plt.xscale('log')
-    plt.show()
+
+    neupy = Neupy()
+    time = np.logspace(0, 16, 10)
+    neupy.fission_induced_neutrinos(time)
+    print(neupy.missing_nuclides)
+    # import matplotlib.pyplot as plt
+    # neupy = NeutrinoEmission()
+    # nuclide = Nuclide(135, 52)
+    # nuclide.make_decay_chain()
+    # nuclide.break_decay_chain_branches()
+    # t = np.logspace(0, 16, 100)
+    # nuclide.concentration_profiles(t)
+    # for linear_chain in nuclide.decay_chain:
+    #     neupy.cumulative_neutrino_profile(linear_chain, ignore_matter_type=True, ignore_flavour=True)
+    #     neupy.check_neutrino_profile_type(linear_chain)
+    #     plt.stackplot(t, *linear_chain['cum_neut'].values)
+    # plt.xscale('log')
+    # plt.show()
