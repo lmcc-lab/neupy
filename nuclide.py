@@ -89,6 +89,7 @@ class Nuclide:
         # Initilise some params
         self.decay_chain = pd.DataFrame([], columns=['nuclide', 'dm'])
         self.allow_energetically_possible_decay_paths = True
+        self.br_intensity_extra_params = False
 
     @staticmethod
     def _azi_gen(A, Z, level=0):
@@ -102,6 +103,14 @@ class Nuclide:
         This updates self.nuclide_nubase_info
         """
         self.nuclide_nubase_info = self.nubase.loc[(self.nubase['A'] == self.A) & (self.nubase['Z'] == self.Z)]
+
+    def convert_intensity_to_decimal(self, intensity):
+        if intensity in ['', '?']:
+            return 0.0
+        if isinstance(intensity, str) and '[' in intensity:
+            intensity = intensity.split('[', 1)[0]
+            self.br_intensity_extra_params = True
+            return float(intensity)/100
 
     def make_decay_chain(self, include_isomer_decay=False, allow_energtically_possible=True, path_num=''):
         """
@@ -139,7 +148,7 @@ class Nuclide:
                 dm, ratio = path.split(sym, 1)                          #
                 dratio = 0
                 if ' ' in ratio:
-                    ratio, dratio = ratio.split(' ', 1)[1]
+                    ratio, dratio = ratio.split(' ', 1)
                 if half_life == 'stbl':                                 # We also check if the decay mode is IS, meaning the nuclide is stable and it's giving the abundance
                     return                                              # instead. We return out of this function if this is true.
                 break                                                   #
@@ -155,7 +164,10 @@ class Nuclide:
                                                                                                                                             # the next nuclide in the decay chain
                                                                                                                                             # all databases are passed in to reduce
                                                                                                                                             # RAM usage
-            df = pd.DataFrame({"nuclide": [next_nuclide], "dm": [dm], "intensity": [ratio], 'dintensity': [dratio]}, index=[path_num+str(new_path_num - path_num_offset)])  # Update the decay_path dataframe with the next nuclide. Path_num
+            df = pd.DataFrame({"nuclide": [next_nuclide], "dm": [dm], 
+                               "intensity": [self.convert_intensity_to_decimal(ratio)], 
+                               'dintensity': [self.convert_intensity_to_decimal(dratio)]}, 
+                               index=[path_num+str(new_path_num - path_num_offset)])  # Update the decay_path dataframe with the next nuclide. Path_num
             decay_paths = pd.concat([decay_paths, df])                                                      # is updated as a string representing the decay path of the decay
                                                                                                             # chain. For example, if path_num is 0, and new_path_num is 1, then
                                                                                                             # the index is 01
@@ -388,7 +400,7 @@ f'''{mermaid_flow}
         
         
         for chain_index, linear_chain in enumerate(self.decay_chain):
-            self_chain_data = pd.DataFrame({"nuclide": [self], "dm": [None], "path_index": [None]})
+            self_chain_data = pd.DataFrame({"nuclide": [self], "dm": [None], "intensity": 100, "dintensity": 0, "path_index": [None]})
             self.decay_chain[chain_index] = pd.concat([self_chain_data, linear_chain], ignore_index=True)
             self.get_half_life_and_convert(chain_index, allow_theoretical)
             half_lives = self.decay_chain[chain_index]['half_life'].values

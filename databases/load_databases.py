@@ -42,16 +42,17 @@ def load_nubase(path: str='databases/', filename: str='nubase2020.txt', log_leve
         for column_range, meta_data in column_desc.items():
             # convert start and end column numbers to ints
             first, second = [int(num) for num in column_range.split(':')]
+            
+            heading = meta_data['quantity']
             # get the value of the column, removing any spaces and new line markers
-            value = line[first-1: second].replace(' ', '').replace('\n', '')
+            value = line[first-1: second].replace(' ', '') if heading != 'BR' else line[first-1: second].replace('\n','')
             # get format and quantity information for this column
             form = meta_data['format']
-            heading = meta_data['quantity']
             # convert value to float if value is not ''.
             systematics_flag = False
             equality_flag = False
             equality = ''
-            if 'f' in form and value != '':
+            if ('f' in form and value != '') and not value.isspace():
 
                 if '#' in value:
                     value = value.replace('#', '')

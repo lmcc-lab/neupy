@@ -89,7 +89,9 @@ class NeutrinoEmission:
     def check_neutrino_profile_type(self, linear_chain):
         cum_neutrino_test = (linear_chain.shape[0], *linear_chain.loc[0, 'cum_neut'].shape)
         if len(cum_neutrino_test) == 2:
-            print("Cumulative neutrinos were calculated without seperating neutrino flavour or matter-antimatter")
+            print("Cumulative neutrinos were calculated without seperating neutrino flavour or matter-antimatter\n"
+                  f"Slide index 0: Nuclide in decay chain, with {cum_neutrino_test[0]} nuclides"
+                  f"Slide index 1: Time, with length {cum_neutrino_test[1]}")
         elif len(cum_neutrino_test) == 3 and cum_neutrino_test[1] == 2:
             print("Cummulative neutrinos were calculated with seperation of matter-antimatter, but not seperating flavour\n"
                   f"Slice index 0: Nuclide in decay chain, with {cum_neutrino_test[0]} nuclides\n"
@@ -105,7 +107,7 @@ class NeutrinoEmission:
                   f"Slice index 0: Nuclide in decay chain, with {cum_neutrino_test[0]} nuclides\n"
                   "Slice index 1: Matter(antimatter) seperation index 0(1)\n"
                   "Slice index 2: flavour, e, mu, tau seperation index with index 0, 1, 2 respectively\n",
-                  f"Slide index 2: Time, with length {cum_neutrino_test[2]}")
+                  f"Slide index 3: Time, with length {cum_neutrino_test[3]}")
 
     
 class Neupy(NeutrinoEmission):
@@ -115,6 +117,10 @@ class Neupy(NeutrinoEmission):
         self.fy = load_all_fy_databases(**fy_kwargs)
         self.nuclide_template = Nuclide(1, 1)
         self.missing_nuclides = []
+        self.fiss_product_neutrino_data = {fiss_elem: [] for fiss_elem in self.fy}
+    
+    def weighted_cumulative_neutrinos(self, linear_chain: pd.DataFrame, fission_yield: float):
+        linear_chain['weight_cum_neut'] = fission_yield * linear_chain['cum_neut'] * (linear_chain['intensity']/100)
     
     def fission_induced_neutrinos(self, time, **flag_kwargs):
         for fission_element, db in self.fy.items():
@@ -129,7 +135,10 @@ class Neupy(NeutrinoEmission):
                 nuclide.concentration_profiles(time, **flag_kwargs)
                 for linear_chain in nuclide.decay_chain:
                     self.cumulative_neutrino_profile(linear_chain, **flag_kwargs)
-                # print(nuclide.decay_chain)
+                    self.weighted_cumulative_neutrinos(linear_chain, row.YI)
+                
+                self.fiss_product_neutrino_data[fission_element].append(nuclide)
+
 
         
 
@@ -139,7 +148,7 @@ if __name__ == "__main__":
     neupy = Neupy()
     time = np.logspace(0, 16, 10)
     neupy.fission_induced_neutrinos(time)
-    print(neupy.missing_nuclides)
+    pprint(neupy.fiss_product_neutrino_data)
     # import matplotlib.pyplot as plt
     # neupy = NeutrinoEmission()
     # nuclide = Nuclide(135, 52)
@@ -147,9 +156,12 @@ if __name__ == "__main__":
     # nuclide.break_decay_chain_branches()
     # t = np.logspace(0, 16, 100)
     # nuclide.concentration_profiles(t)
-    # for linear_chain in nuclide.decay_chain:
+    # for i, linear_chain in enumerate(nuclide.decay_chain):
     #     neupy.cumulative_neutrino_profile(linear_chain, ignore_matter_type=True, ignore_flavour=True)
     #     neupy.check_neutrino_profile_type(linear_chain)
-    #     plt.stackplot(t, *linear_chain['cum_neut'].values)
+    #     display_names = nuclide.display_decay_chain()[i]
+    #     plt.stackplot(t, *linear_chain['cum_neut'].values, labels=display_names.nuclide.values)
+    # print(nuclide.display_decay_chain())
+    # plt.legend()
     # plt.xscale('log')
     # plt.show()
