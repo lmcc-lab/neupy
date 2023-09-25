@@ -1,0 +1,65 @@
+meat_spec_standard_fuel:
+  U235_mass_per_fuel_assemby_g: 484.23
+  U_total_mass_per_fuel_assembly_g: 2443.63
+  total_mass_of_meat_per_fuel_assembly_g: 3319.29
+  density_assuming_meat_thickness_0.61mm_g/cm3: 6.4820
+  concentration_%:
+    Al: 20.325
+    Si: 5.9969
+    U234: 0.1124
+    U235: 14.588
+    U236: 0.1520
+    U238: 58.766
+    Impurities_EBC: 0.000498
+
+meat_spec_type_2_fuel:
+  U235_mass_per_fuel_assemby_g: 383.19
+  U_total_mass_per_fuel_assembly_g: 1940.15
+  total_mass_of_meat_per_fuel_assembly_g: 2928.46
+  density_assuming_meat_thickness_0.61mm_g/cm3: 5.7187
+  concentration_%:
+    Al: 28.281
+    Si: 5.3968
+    U234: 0.1012
+    U235: 13.085
+    U236: 0.1368
+    U238: 52.928
+    Impurities_EBC: 0.000548
+
+meat_spec_type_1_fuel:
+  U235_mass_per_fuel_assemby_g: 211.68
+  U_total_mass_per_fuel_assembly_g: 1076.03
+  total_mass_of_meat_per_fuel_assembly_g: 2229.10
+  density_assuming_meat_thickness_0.61mm_g/cm3: 4.3530
+  concentration_%:
+    Al: 47.697
+    Si: 3.9322
+    U234: 0.0737
+    U235: 9.4962
+    U236: 0.0997
+    U238: 38.602
+    Impurities_EBC: 0.000671
+
+general_description_of_the_opal_facility:
+  type_of_reactor: "Open pool"
+  nominal_power: "20 MW thermal"
+  max_neutron_flux:
+    thermal_in_core_cm-2s-1: 2e14
+    thermal_irradiation_position_in_reflector_cm-2s-1: 3e14
+    fast_in_core_cm-2s-1: 2e14
+    fast_irradiation_position_in_refector_cm-2s-1: 8e12
+  fuel_type: "flat plat\nU_3 Si_2-Al dispersion\nAl clas parallel_plates"
+  enrichment: 19.8wt%
+  reference_pressure_of_the_facility: pool open to atmosphere
+  coolant_(type_and_flow_direction): light water, upward flow
+  moderator: light water
+  reflector: heavy water
+  max_heat_flux_(for_20MW_operation): Max (nominal) 173 W/cm^2, Av. 72W/cm^2
+  nominal_flow_rate:
+    total_m3/h: 2000
+    flow_rate_through_core_m3/h: 1972 
+  flow_rate_with_natural_ciculation: depends on power
+  expermental_facilities: 5 tangential beam tubes
+  irradiation positions: out of core only
+
+# main_parameters_of_opal:

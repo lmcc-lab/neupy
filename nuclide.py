@@ -90,6 +90,8 @@ class Nuclide:
         self.decay_chain = pd.DataFrame([], columns=['nuclide', 'dm'])
         self.allow_energetically_possible_decay_paths = True
         self.br_intensity_extra_params = False
+        self.total_neutrino_profile = 0
+        self._debug_record = {'bateman_denom_error': []}
 
     @staticmethod
     def _azi_gen(A, Z, level=0):
@@ -110,7 +112,7 @@ class Nuclide:
         if isinstance(intensity, str) and '[' in intensity:
             intensity = intensity.split('[', 1)[0]
             self.br_intensity_extra_params = True
-            return float(intensity)/100
+        return float(intensity)/100
 
     def make_decay_chain(self, include_isomer_decay=False, allow_energtically_possible=True, path_num=''):
         """
@@ -366,6 +368,9 @@ f'''{mermaid_flow}
         for i, L in enumerate(lambdai[:n+1]):
             denom = np.prod([l-L for j, l in enumerate(lambdai[:n+1]) if i != j])
             exp_term = np.exp(-L*t)
+            if denom == 0:
+                self._debug_record['bateman_denom_error'].append({'nuclide': self.AZI, "denom_vals": [(l,L) for j, l in enumerate(lambdai[:n+1]) if i != j]})
+                continue
             frac += exp_term/denom
         return N10 * prod * frac
 
@@ -400,7 +405,7 @@ f'''{mermaid_flow}
         
         
         for chain_index, linear_chain in enumerate(self.decay_chain):
-            self_chain_data = pd.DataFrame({"nuclide": [self], "dm": [None], "intensity": 100, "dintensity": 0, "path_index": [None]})
+            self_chain_data = pd.DataFrame({"nuclide": [self], "dm": [None], "intensity": 1.0, "dintensity": 0.0, "path_index": [None]})
             self.decay_chain[chain_index] = pd.concat([self_chain_data, linear_chain], ignore_index=True)
             self.get_half_life_and_convert(chain_index, allow_theoretical)
             half_lives = self.decay_chain[chain_index]['half_life'].values

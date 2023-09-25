@@ -117,28 +117,41 @@ class Neupy(NeutrinoEmission):
         self.fy = load_all_fy_databases(**fy_kwargs)
         self.nuclide_template = Nuclide(1, 1)
         self.missing_nuclides = []
-        self.fiss_product_neutrino_data = {fiss_elem: [] for fiss_elem in self.fy}
+        self.fiss_product_neutrino_data = {fiss_elem: None for fiss_elem in self.fy}
     
     def weighted_cumulative_neutrinos(self, linear_chain: pd.DataFrame, fission_yield: float):
-        linear_chain['weight_cum_neut'] = fission_yield * linear_chain['cum_neut'] * (linear_chain['intensity']/100)
+        linear_chain['weight_cum_neut'] = fission_yield * linear_chain['cum_neut'] * np.prod(linear_chain['intensity'])
     
-    def fission_induced_neutrinos(self, time, **flag_kwargs):
+    def total_weighted_neutrinos(self, nuclide: Nuclide):
+        for linear_chain in nuclide.decay_chain:
+            nuclide.total_neutrino_profile += np.sum(np.vstack(linear_chain['weight_cum_neut'].values), axis=0)
+            
+    def fission_induced_neutrinos(self, nuclide, fy, time, **flag_kwargs):
+        nuclide.concentration_profiles(time, **flag_kwargs)
+        for linear_chain in nuclide.decay_chain:
+            self.cumulative_neutrino_profile(linear_chain, **flag_kwargs)
+            self.weighted_cumulative_neutrinos(linear_chain, fy)
+        self.total_weighted_neutrinos(nuclide)
+    
+    def all_fission_induced_neutrinos(self, time, **kwargs):
         for fission_element, db in self.fy.items():
-            for i, row in tqdm(db.iterrows(), total=db.shape[0]):
+            total_neutrinos = 0
+            nuclide_neutrino_data = []
+            for i, row in tqdm(db.iterrows(), total=db.shape[0], desc='Neutrinos'):
                 AZI = row.name
-
                 nuclide = Nuclide(AZI=AZI, nubase=self.nuclide_template.nubase, fy=self.fy, config_file=self.nuclide_template.config, nubase_config=self.nuclide_template.nubase_config)
                 if not nuclide.found:
                     self.missing_nuclides.append(AZI)
                     continue
 
-                nuclide.concentration_profiles(time, **flag_kwargs)
-                for linear_chain in nuclide.decay_chain:
-                    self.cumulative_neutrino_profile(linear_chain, **flag_kwargs)
-                    self.weighted_cumulative_neutrinos(linear_chain, row.YI)
-                
-                self.fiss_product_neutrino_data[fission_element].append(nuclide)
+                self.fission_induced_neutrinos(nuclide, row.YI, time, **kwargs)
+                nuclide_neutrino_data.append(nuclide)
+                total_neutrinos += nuclide.total_neutrino_profile
+            self.fiss_product_neutrino_data[fission_element] = {f'total_neutrinos': total_neutrinos, 'nuclide_specific': nuclide_neutrino_data}
 
+    # def convert_thermal_to_burn_rate(self, thermal_power: np.ndarray, steady_state_power: float):
+        
+        
 
         
 
@@ -146,22 +159,19 @@ class Neupy(NeutrinoEmission):
 if __name__ == "__main__":
 
     neupy = Neupy()
-    time = np.logspace(0, 16, 10)
-    neupy.fission_induced_neutrinos(time)
-    pprint(neupy.fiss_product_neutrino_data)
+    pprint(neupy.fy)
+    # time = np.logspace(0, 16, 50)
+    # neupy.all_fission_induced_neutrinos(time)
+
     # import matplotlib.pyplot as plt
-    # neupy = NeutrinoEmission()
-    # nuclide = Nuclide(135, 52)
-    # nuclide.make_decay_chain()
-    # nuclide.break_decay_chain_branches()
-    # t = np.logspace(0, 16, 100)
-    # nuclide.concentration_profiles(t)
-    # for i, linear_chain in enumerate(nuclide.decay_chain):
-    #     neupy.cumulative_neutrino_profile(linear_chain, ignore_matter_type=True, ignore_flavour=True)
-    #     neupy.check_neutrino_profile_type(linear_chain)
-    #     display_names = nuclide.display_decay_chain()[i]
-    #     plt.stackplot(t, *linear_chain['cum_neut'].values, labels=display_names.nuclide.values)
-    # print(nuclide.display_decay_chain())
-    # plt.legend()
+    # plt.stackplot(time, *[nuc.total_neutrino_profile if not isinstance(nuc.total_neutrino_profile, int) else [0]*len(time) for nuc in neupy.fiss_product_neutrino_data['u235thermal']['nuclide_specific']],
+    #               labels=[nuc.nuclide_nubase_info.loc[nuc.AZI, 'A El'] for nuc in neupy.fiss_product_neutrino_data['u235thermal']['nuclide_specific']])
+
+    # # nuclide = Nuclide(135, 52)
+    # # neupy.fission_induced_neutrinos(nuclide, neupy.fy['u235thermal'].loc[nuclide.AZI, 'YI'], time)
+
+    
+    # # plt.plot(time, neupy.fiss_product_neutrino_data['u235thermal']['total_neutrinos'])
     # plt.xscale('log')
+    # plt.legend()
     # plt.show()

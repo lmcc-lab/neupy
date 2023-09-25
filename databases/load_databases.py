@@ -6,6 +6,8 @@ import math
 from typing import Tuple
 import logging
 import os
+import io
+import numpy as np
 
 """
 Transform Parsed_nubase2016.xlsx file into a SQL database. Data will be
@@ -136,10 +138,7 @@ def load_all_fy_databases(path: str='databases/') -> dict:
         if f[:2] != 'fy':
             continue
         key = f_split[0][2:]
-        fiss_data = pd.read_csv(path + f, sep="	", header=0)
-        fiss_data.columns = ["Z", "A", "Level", "YI", "YI uncert"]
-        fiss_data['AZI'] = fiss_data['A'].apply(lambda A: ''.join(["0"]*(3-len(f"{A}")))+f"{A}") + fiss_data['Z'].apply(lambda Z: ''.join(["0"]*(3-len(f"{Z}"))) + f"{Z}") + fiss_data['Level'].apply(lambda level: f"{level}")
-        fiss_data = fiss_data.set_index('AZI')
+        fiss_data = break_ENSDF_db(path+f, save_file=False)
         db[key] = fiss_data
     return db
 
@@ -159,7 +158,40 @@ def unique_decay_modes(nubase: pd.DataFrame):
                     print(row)
             unique_dm.add(d)
 
+def break_ENSDF_db(filename: str, save_file=True):
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+
+    neutron_energies_index = [i for i, line in enumerate(lines) if 'Neutron energy' in line]
+    if len(neutron_energies_index) == 0:
+        lines.remove('----------- ------- ------- ----------- -----------\n')
+        tables = {'independent': pd.read_csv(io.StringIO(''.join(lines)))}
+        return tables
+    
+    tables = {lines[row_index].split(' = ', 1)[1].replace('\n', "").replace(' ', ''):
+              lines[row_index+2: neutron_energies_index[i+1]-1]
+              if i+1 < len(neutron_energies_index) else lines[row_index+2:]
+              for i, row_index in enumerate(neutron_energies_index)}
+    
+    for ne, table in tables.items():
+        table.remove('----------- ------- ------- ----------- -----------\n')
+        if save_file:
+            with open(filename.replace('.txt', '')+f'_ne={ne}.txt', 'w+') as f:
+                f.writelines(table)
+        df = pd.read_csv(io.StringIO(''.join(table)), delimiter=r"\s{2,}", engine='python')
+        df = df.rename(columns={'FPS': 'Level'})
+        df['Level'] = df['Level'].astype(int)
+        df['ZAFP'] = df['ZAFP'].astype(int)
+        df['Z'] = (df['ZAFP'] % 1000).astype(int)
+        df['A'] = ((df['ZAFP'] - df['ZAFP']%1000)/1000).astype(int)
+        df['AZI'] = df['A'].apply(lambda A: ''.join(["0"]*(3-len(f"{A}")))+f"{A}") + df['Z'].apply(lambda Z: ''.join(["0"]*(3-len(f"{Z}"))) + f"{Z}") + df['Level'].apply(lambda level: f"{level}")
+        df = df.set_index('AZI', drop=True)
+        df = df.drop(columns=['ZAFP', 'PRODUCT'], axis=1)
+        tables[ne] = df
+    return tables
+
+
+
+
 if __name__ == "__main__":
-    nubase,_ = load_nubase('databases/', log_level=logging.ERROR)
-    unique_decay_modes(nubase)
-    print(nubase.loc[nubase['BR'] == 'B=728;IT=288'])
+    tables = break_ENSDF_db('databases/fyU235.txt', save_file=False)
