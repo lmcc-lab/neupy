@@ -5,7 +5,11 @@ import logging
 import numpy as np
 from typing import List, Union
 import os
+from config import *
 
+
+class DecayChainDepthWarning(Warning):
+    pass
 
 class Nuclide:
 
@@ -114,7 +118,7 @@ class Nuclide:
             self.br_intensity_extra_params = True
         return float(intensity)/100
 
-    def make_decay_chain(self, include_isomer_decay=False, allow_energtically_possible=True, path_num=''):
+    def make_decay_chain(self, include_isomer_decay=False, allow_energtically_possible=True, path_num='', generation=0):
         """
         Decay chains are generated using the decay mode information for the nuclide for each generation of the decay chain. 
         
@@ -128,6 +132,10 @@ class Nuclide:
                                                   allow or disallow these decay paths using this toggle. By default it's set to True.
         path_num: leave as '', it is passed on during the recursion.
         """
+        generation += 1
+        if generation == max_chain_depth:
+            raise DecayChainDepthWarning(f"Max generations reached for nuclide {self.AZI}")
+        
         self.allow_energetically_possible_decay_paths = allow_energtically_possible
         if not include_isomer_decay:                                    # If this flag is False, then set nuclide level to 0 and assume no isomer
             self.level = 0                                              # decay. Will make True case in future
@@ -178,7 +186,7 @@ class Nuclide:
                                                                         # Up to now we have found all of the daughter nuclides for a generation, now we will go through each daughter
                                                                         # nuclide and find the next generation, keeping track of the parents using path_num
         for index, path in decay_paths.iterrows():  
-            path['nuclide'].make_decay_chain(include_isomer_decay=include_isomer_decay, path_num=index) # Go through the daughter nuclides of this generation and recursively make
+            path['nuclide'].make_decay_chain(include_isomer_decay=include_isomer_decay, path_num=index, generation=generation) # Go through the daughter nuclides of this generation and recursively make
             self.decay_chain = pd.concat([self.decay_chain, path['nuclide'].decay_chain])               # the next generation, passing in the parents path_num to keep track of 
                                                                                                         # the decay chain family. When the recursion is done, add this to self.decay_chain
 

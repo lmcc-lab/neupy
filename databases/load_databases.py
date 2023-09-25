@@ -165,10 +165,19 @@ def break_ENSDF_db(filename: str, save_file=True):
     neutron_energies_index = [i for i, line in enumerate(lines) if 'Neutron energy' in line]
     if len(neutron_energies_index) == 0:
         lines.remove('----------- ------- ------- ----------- -----------\n')
-        tables = {'independent': pd.read_csv(io.StringIO(''.join(lines)))}
+        df = pd.read_csv(io.StringIO(''.join(lines)), delimiter=r"\s{2,}", engine='python')
+        df = df.rename(columns={'FPS': 'Level'})
+        df['Level'] = df['Level'].astype(int)
+        df['ZAFP'] = df['ZAFP'].astype(int)
+        df['A'] = (df['ZAFP'] % 1000).astype(int)
+        df['Z'] = ((df['ZAFP'] - df['ZAFP']%1000)/1000).astype(int)
+        df['AZI'] = df['A'].apply(lambda A: ''.join(["0"]*(3-len(f"{A}")))+f"{A}") + df['Z'].apply(lambda Z: ''.join(["0"]*(3-len(f"{Z}"))) + f"{Z}") + df['Level'].apply(lambda level: f"{level}")
+        df = df.set_index('AZI', drop=True)
+        df = df.drop(columns=['ZAFP', 'PRODUCT'], axis=1)
+        tables = {'independent': df}
         return tables
     
-    tables = {lines[row_index].split(' = ', 1)[1].replace('\n', "").replace(' ', ''):
+    tables = {float(lines[row_index].split(' = ', 1)[1].replace('\n', "").replace(' ', '')):
               lines[row_index+2: neutron_energies_index[i+1]-1]
               if i+1 < len(neutron_energies_index) else lines[row_index+2:]
               for i, row_index in enumerate(neutron_energies_index)}
@@ -182,8 +191,8 @@ def break_ENSDF_db(filename: str, save_file=True):
         df = df.rename(columns={'FPS': 'Level'})
         df['Level'] = df['Level'].astype(int)
         df['ZAFP'] = df['ZAFP'].astype(int)
-        df['Z'] = (df['ZAFP'] % 1000).astype(int)
-        df['A'] = ((df['ZAFP'] - df['ZAFP']%1000)/1000).astype(int)
+        df['A'] = (df['ZAFP'] % 1000).astype(int)
+        df['Z'] = ((df['ZAFP'] - df['ZAFP']%1000)/1000).astype(int)
         df['AZI'] = df['A'].apply(lambda A: ''.join(["0"]*(3-len(f"{A}")))+f"{A}") + df['Z'].apply(lambda Z: ''.join(["0"]*(3-len(f"{Z}"))) + f"{Z}") + df['Level'].apply(lambda level: f"{level}")
         df = df.set_index('AZI', drop=True)
         df = df.drop(columns=['ZAFP', 'PRODUCT'], axis=1)

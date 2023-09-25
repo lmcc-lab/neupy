@@ -1,6 +1,7 @@
-from nuclide import Nuclide, pprint, pd, np
+from nuclide import Nuclide, pprint, pd, np, DecayChainDepthWarning, max_chain_depth
 from databases.load_databases import load_all_fy_databases
 from tqdm import tqdm
+from typing import Union, Tuple
 
 class NeutrinoEmission:
 
@@ -117,8 +118,7 @@ class Neupy(NeutrinoEmission):
         self.fy = load_all_fy_databases(**fy_kwargs)
         self.nuclide_template = Nuclide(1, 1)
         self.missing_nuclides = []
-        self.fiss_product_neutrino_data = {fiss_elem: None for fiss_elem in self.fy}
-    
+        
     def weighted_cumulative_neutrinos(self, linear_chain: pd.DataFrame, fission_yield: float):
         linear_chain['weight_cum_neut'] = fission_yield * linear_chain['cum_neut'] * np.prod(linear_chain['intensity'])
     
@@ -133,22 +133,47 @@ class Neupy(NeutrinoEmission):
             self.weighted_cumulative_neutrinos(linear_chain, fy)
         self.total_weighted_neutrinos(nuclide)
     
-    def all_fission_induced_neutrinos(self, time, **kwargs):
-        for fission_element, db in self.fy.items():
-            total_neutrinos = 0
-            nuclide_neutrino_data = []
-            for i, row in tqdm(db.iterrows(), total=db.shape[0], desc='Neutrinos'):
-                AZI = row.name
-                nuclide = Nuclide(AZI=AZI, nubase=self.nuclide_template.nubase, fy=self.fy, config_file=self.nuclide_template.config, nubase_config=self.nuclide_template.nubase_config)
-                if not nuclide.found:
-                    self.missing_nuclides.append(AZI)
-                    continue
+    def all_fission_induced_neutrinos(self, time, neutron_energy_range: Union[Tuple[float], float, None] = None, **kwargs) -> dict:
+        """
+        neutron_energy_range: Tuple[float] | float | None, if None it will include all database data without
+        consideration of the neutron energy, if it's a float then it will only include databases where the
+        neutron energy is what you gave it, otherwise it expects a tuple representing the start and end 
+        of the neutron range in question (start, end) inclusive of both ends.
+        
+        """
+        
+        fission_product_neutrino_data = dict()
+        for fission_element, ne_dict in self.fy.items():
+            element_fpnd = dict()
+            for ne, db in ne_dict.items():
+                
+                if ne != 'independent':
+                    if isinstance(neutron_energy_range, float) and ne != neutron_energy_range:
+                        continue
+                    
+                    if isinstance(neutron_energy_range, tuple) and not neutron_energy_range[0] <= ne <= neutron_energy_range[1]:
+                        continue
+                
+                total_neutrinos = 0
+                nuclide_neutrino_data = []
+                for i, row in tqdm(db.iterrows(), total=db.shape[0], desc=f"{fission_element} {ne}"):
+                    AZI = i
+                    nuclide = Nuclide(AZI=AZI, nubase=self.nuclide_template.nubase, fy=self.fy, config_file=self.nuclide_template.config, nubase_config=self.nuclide_template.nubase_config)
+                    # print(AZI)
+                    if not nuclide.found:
+                        self.missing_nuclides.append(AZI)
+                        continue
+                    try:
+                        self.fission_induced_neutrinos(nuclide, row.Y, time, **kwargs)
+                    except DecayChainDepthWarning:
+                        print(f"Nuclide {AZI}'s decay chain depth exceeded maximum {max_chain_depth}")
+                        continue
+                    nuclide_neutrino_data.append(nuclide)
+                    total_neutrinos += nuclide.total_neutrino_profile
+                element_fpnd[ne] = {"total_neutrinos": total_neutrinos, 'nuclide_specific': nuclide_neutrino_data}
+            fission_product_neutrino_data[fission_element] = element_fpnd
 
-                self.fission_induced_neutrinos(nuclide, row.YI, time, **kwargs)
-                nuclide_neutrino_data.append(nuclide)
-                total_neutrinos += nuclide.total_neutrino_profile
-            self.fiss_product_neutrino_data[fission_element] = {f'total_neutrinos': total_neutrinos, 'nuclide_specific': nuclide_neutrino_data}
-
+        return fission_product_neutrino_data
     # def convert_thermal_to_burn_rate(self, thermal_power: np.ndarray, steady_state_power: float):
         
         
@@ -159,9 +184,9 @@ class Neupy(NeutrinoEmission):
 if __name__ == "__main__":
 
     neupy = Neupy()
-    pprint(neupy.fy)
-    # time = np.logspace(0, 16, 50)
-    # neupy.all_fission_induced_neutrinos(time)
+    time = np.logspace(0, 16, 50)
+    # pprint(neupy.fy)
+    pprint(neupy.all_fission_induced_neutrinos(time, neutron_energy_range=5e5))
 
     # import matplotlib.pyplot as plt
     # plt.stackplot(time, *[nuc.total_neutrino_profile if not isinstance(nuc.total_neutrino_profile, int) else [0]*len(time) for nuc in neupy.fiss_product_neutrino_data['u235thermal']['nuclide_specific']],
