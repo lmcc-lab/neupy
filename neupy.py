@@ -2,6 +2,8 @@ from nuclide import Nuclide, pprint, pd, np, DecayChainDepthWarning, max_chain_d
 from databases.load_databases import load_all_fy_databases
 from tqdm import tqdm
 from typing import Union, Tuple
+from config import *
+import pickle
 
 class NeutrinoEmission:
 
@@ -133,7 +135,13 @@ class Neupy(NeutrinoEmission):
             self.weighted_cumulative_neutrinos(linear_chain, fy)
         self.total_weighted_neutrinos(nuclide)
     
-    def all_fission_induced_neutrinos(self, time, neutron_energy_range: Union[Tuple[float], float, None] = None, **kwargs) -> dict:
+    def all_fission_induced_neutrinos(self, time: Union[list, np.ndarray], 
+                                      neutron_energy_range: Union[Tuple[float], float, None] = None, 
+                                      load_saved=False, 
+                                      save = True,
+                                      file_name = 'neutrino_results',
+                                      file_path = 'databases/',
+                                      **kwargs) -> dict:
         """
         neutron_energy_range: Tuple[float] | float | None, if None it will include all database data without
         consideration of the neutron energy, if it's a float then it will only include databases where the
@@ -141,6 +149,11 @@ class Neupy(NeutrinoEmission):
         of the neutron range in question (start, end) inclusive of both ends.
         
         """
+        if load_saved:
+            print('loading fission data')
+            with open(f'{file_path}{file_name}.pickle', 'rb') as f:
+                fission_product_neutrino_data = pickle.load(f)
+            return fission_product_neutrino_data
         
         fission_product_neutrino_data = dict()
         for fission_element, ne_dict in self.fy.items():
@@ -174,9 +187,48 @@ class Neupy(NeutrinoEmission):
                     total_neutrinos += nuclide.total_neutrino_profile
                 element_fpnd[ne] = {"total_neutrinos": total_neutrinos, 'nuclide_specific': nuclide_neutrino_data}
             fission_product_neutrino_data[fission_element] = element_fpnd
+        
+        if save:
+            with open(f'{file_path}{file_name}.pickle', 'wb+') as f:
+                pickle.dump(fission_product_neutrino_data, f)
 
         return fission_product_neutrino_data
-    # def convert_thermal_to_burn_rate(self, thermal_power: np.ndarray, steady_state_power: float):
+    
+    def convert_thermal_to_burn_rate(self, thermal_power: np.ndarray) -> dict:
+        # Basic thermal model, where U235 makes up 94% of the thermal power generation
+        return {'U235': 0.94 * thermal_power / u235_energy_per_fission_MeV}
+    
+    def cummulative_neutrinos_from_burn_rate(self, burn_rate: dict, time: Union[list, np.ndarray], 
+                                             **fiss_induced_neut_kwargs):
+        fy_neutrinos = self.all_fission_induced_neutrinos(time, **fiss_induced_neut_kwargs)
+        dt = time[1] - time[0]
+
+        cummulative_neutrinos = dict()
+        for element, burn_profile in burn_rate.items():
+            element_neutrinos = fy_neutrinos.get(element, None)
+
+            if element_neutrinos == None:
+                continue
+            
+            cum_neut_for_elem = dict()
+
+            for ne, neutrino_data in element_neutrinos.items():
+                total_neutrinos = neutrino_data['total_neutrinos']
+                cum_neutrinos = 0
+                for i, instant_burn_rate in enumerate(burn_profile):
+                    neut_array = np.zeros(len(time))
+                    neut_array[i:] = total_neutrinos[i:]
+                    cum_neutrinos += instant_burn_rate * neut_array * dt
+                cum_neut_for_elem[ne] = cum_neutrinos
+
+            cummulative_neutrinos[element] = cum_neut_for_elem
+
+        return cummulative_neutrinos
+
+            
+            
+
+
         
         
 
@@ -186,17 +238,23 @@ class Neupy(NeutrinoEmission):
 if __name__ == "__main__":
 
     neupy = Neupy()
-    time = np.logspace(0, 16, 50)
+    time = np.linspace(0, 1000, 1000)
     # pprint(neupy.fy)
-    fy_neutrinos = neupy.all_fission_induced_neutrinos(time, neutron_energy_range=5e5)
-    total_plots = 0
-    
+    thermal_power = np.zeros(len(time))
+    thermal_power[100:200] = 20e6  # 20 MW
+
+    cum_neutrinos = neupy.cummulative_neutrinos_from_burn_rate({'U235': thermal_power}, time, load_saved=True)
     import matplotlib.pyplot as plt
 
-    for i, element in enumerate(fy_neutrinos):
-        for j, ne in enumerate(fy_neutrinos[element]):
-            plt.plot(time, fy_neutrinos[element][ne]['total_neutrinos'], label=element)
+    fig, ax = plt.subplots()
+    for i, element in enumerate(cum_neutrinos):
+        for j, ne in enumerate(cum_neutrinos[element]):
+            ax.plot(time, cum_neutrinos[element][ne], label=element)
     
+    axtwin = ax.twinx()
+    axtwin.plot(time, thermal_power, color='r')
+    # plt.legend()
+    # plt.xscale('log')
     plt.show()
 
     # import matplotlib.pyplot as plt
