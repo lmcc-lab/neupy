@@ -1,1 +1,1 @@
-max_chain_depth = 100
+max_chain_depth = 150

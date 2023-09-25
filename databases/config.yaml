@@ -132,7 +132,7 @@ nubase2020:
       transform: (0, +2)
     e+: 
       description: Positron emission
-      transform: (0, +1)
+      transform: (0, -1)
     EC: 
       description: Electron capture
       transform: (0, -1)

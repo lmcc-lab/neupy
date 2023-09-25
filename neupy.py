@@ -157,6 +157,8 @@ class Neupy(NeutrinoEmission):
                 total_neutrinos = 0
                 nuclide_neutrino_data = []
                 for i, row in tqdm(db.iterrows(), total=db.shape[0], desc=f"{fission_element} {ne}"):
+                    if row.Y == 0.0:
+                        continue
                     AZI = i
                     nuclide = Nuclide(AZI=AZI, nubase=self.nuclide_template.nubase, fy=self.fy, config_file=self.nuclide_template.config, nubase_config=self.nuclide_template.nubase_config)
                     # print(AZI)
@@ -186,7 +188,16 @@ if __name__ == "__main__":
     neupy = Neupy()
     time = np.logspace(0, 16, 50)
     # pprint(neupy.fy)
-    pprint(neupy.all_fission_induced_neutrinos(time, neutron_energy_range=5e5))
+    fy_neutrinos = neupy.all_fission_induced_neutrinos(time, neutron_energy_range=5e5)
+    total_plots = 0
+    
+    import matplotlib.pyplot as plt
+
+    for i, element in enumerate(fy_neutrinos):
+        for j, ne in enumerate(fy_neutrinos[element]):
+            plt.plot(time, fy_neutrinos[element][ne]['total_neutrinos'], label=element)
+    
+    plt.show()
 
     # import matplotlib.pyplot as plt
     # plt.stackplot(time, *[nuc.total_neutrino_profile if not isinstance(nuc.total_neutrino_profile, int) else [0]*len(time) for nuc in neupy.fiss_product_neutrino_data['u235thermal']['nuclide_specific']],

@@ -423,20 +423,20 @@ f'''{mermaid_flow}
 
 
 if __name__ == "__main__":
-    nuclide = Nuclide(Z=52, A=135)
+    nuclide = Nuclide(AZI='0910420')
 
     nuclide.make_decay_chain()
-    # nuclide.display_decay_chain()
+    nuclide.display_decay_chain()
 
     t = np.logspace(0, 16, 100)
     # nuclide.bateman_equation_latex(2)
-    nuclide.concentration_profiles(t)
-    print(nuclide.decay_chain)
-    # print(nuclide.display_decay_chain())
-    import matplotlib.pyplot as plt
-    for linear_chain in nuclide.decay_chain:
-        concentrations = linear_chain['concentration_profile']
-        plt.stackplot(t, *concentrations, labels=[nuc.nuclide_nubase_info.loc[nuc.AZI, 'A El'] for nuc in linear_chain['nuclide'].values])
-    plt.xscale('log')
-    plt.legend()
-    plt.show()
+    # nuclide.concentration_profiles(t)
+    # print(nuclide.decay_chain)
+    # # print(nuclide.display_decay_chain())
+    # import matplotlib.pyplot as plt
+    # for linear_chain in nuclide.decay_chain:
+    #     concentrations = linear_chain['concentration_profile']
+    #     plt.stackplot(t, *concentrations, labels=[nuc.nuclide_nubase_info.loc[nuc.AZI, 'A El'] for nuc in linear_chain['nuclide'].values])
+    # plt.xscale('log')
+    # plt.legend()
+    # plt.show()
