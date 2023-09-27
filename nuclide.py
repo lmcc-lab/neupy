@@ -11,12 +11,13 @@ from config import *
 class DecayChainDepthWarning(Warning):
     pass
 
-class Bateman:
+class _Bateman:
 
-    def __init__(self, n: int, lambdai: Union[np.ndarray, list], N10: float=1.0):
+    def __init__(self, n: int, lambdai: Union[np.ndarray, list], AZI: str, N10: float=1.0):
         self.n = n
         self.lambdai = lambdai
         self.N10 = N10     
+        self.AZI = AZI
         self._debug_record = dict()   
     
     @staticmethod
@@ -48,6 +49,8 @@ class Bateman:
             denom = np.prod([l-L for j, l in enumerate(self.lambdai[:self.n+1]) if i != j])
             exp_term = np.exp(-L*t)
             if denom == 0:
+                if self._debug_record.get('bateman_denom_error', None) is None:
+                    self._debug_record = {'bateman_denom_error': []}
                 self._debug_record['bateman_denom_error'].append({'nuclide': self.AZI, "denom_vals": [(l,L) for j, l in enumerate(self.lambdai[:self.n+1]) if i != j]})
                 continue
             frac += exp_term/denom
@@ -83,6 +86,8 @@ class Bateman:
             denom = np.prod([l-L for j, l in enumerate(self.lambdai[:self.n+1]) if i != j])
             exp_term = np.exp(-L*t)/-L
             if denom == 0:
+                if self._debug_record.get('bateman_denom_error', None) is None:
+                    self._debug_record = {'bateman_denom_error': []}
                 self._debug_record['bateman_denom_error'].append({'nuclide': self.AZI, "denom_vals": [(l,L) for j, l in enumerate(self.lambdai[:self.n+1]) if i != j]})
                 continue
             frac += exp_term/denom
@@ -172,7 +177,7 @@ class Nuclide:
         self.allow_energetically_possible_decay_paths = True
         self.br_intensity_extra_params = False
         self.total_neutrino_profile = 0
-        self._debug_record = {'bateman_denom_error': []}
+
 
     @staticmethod
     def _azi_gen(A, Z, level=0):
@@ -479,7 +484,7 @@ f'''{mermaid_flow}
             self.get_half_life_and_convert(chain_index, allow_theoretical)
             half_lives = self.decay_chain[chain_index]['half_life'].values
             lambdai = [0 if hl[0] == 'stbl' else self.convert_half_lives_to_decay_constant(hl[0]) for hl in half_lives]
-            self.decay_chain[chain_index]['bateman_object'] = self.decay_chain[chain_index].apply(lambda row: Bateman(row.name, lambdai), axis=1)
+            self.decay_chain[chain_index]['bateman_object'] = self.decay_chain[chain_index].apply(lambda row: _Bateman(row.name, lambdai, self.AZI), axis=1)
             self.decay_chain[chain_index]['concentration_profile'] = self.decay_chain[chain_index]['bateman_object'].apply(lambda bateman_object: bateman_object.bateman_equation)
 
 if __name__ == "__main__":
