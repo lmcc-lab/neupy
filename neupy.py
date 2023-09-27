@@ -1,9 +1,19 @@
 from nuclide import Nuclide, pprint, pd, np, DecayChainDepthWarning, max_chain_depth
 from databases.load_databases import load_all_fy_databases
 from tqdm import tqdm
-from typing import Union, Tuple
+from typing import Union, Tuple, Dict, List
 from config import *
 import pickle
+
+
+class _CumulativeNeutrinos:
+
+    def __init__(self, neut_scale, concentration_profile) -> None:
+        self.neut_scale = neut_scale
+        self.concentration_profile = concentration_profile
+    
+    def calculate(self, t):
+        return self.neut_scale * self.concentration_profile(t)
 
 class NeutrinoEmission:
 
@@ -87,7 +97,7 @@ class NeutrinoEmission:
         neut_vec_kwargs.pop('cumulative', None)
         neut_vec = self.neutrino_vec(linear_chain, cumulative=True, **neut_vec_kwargs)
         linear_chain['cum_neut'] = linear_chain.apply(
-            lambda row: self._map_element_wise_multiplication(neut_vec[row.name], row.concentration_profile), axis=1)
+            lambda row: _CumulativeNeutrinos(neut_vec[row.name], row.concentration_profile).calculate, axis=1)
             
     def check_neutrino_profile_type(self, linear_chain):
         cum_neutrino_test = (linear_chain.shape[0], *linear_chain.loc[0, 'cum_neut'].shape)
@@ -114,8 +124,26 @@ class NeutrinoEmission:
 
     
 class Neupy(NeutrinoEmission):
-
+    
     def __init__(self, **fy_kwargs) -> None:
+        """
+        Neupy is a child class of Neutrino emission, which adds extra information about a decay chains
+        neutrino profile, specifically the matter and flavour type. 
+
+        Parameters
+        -------------------
+        - fy_kwargs, passed to databases.load_databases.load_all_fy_databases
+
+        Load any txt file of the form fy{}.txt file, add them to a dictionary with key {}
+        and add a column of AZI, assuming all fy files are in the same format (sep = "   ", header=0 with
+        columns "Z", "A", "Level", "YI", "YI uncert")
+
+        @params
+        path: str, path where fy{}.txt files is contained.
+
+        @returns
+        fiss_data: Dict[str: pd.DataFrame]
+        """
         super().__init__()
         self.fy = load_all_fy_databases(**fy_kwargs)
         self.nuclide_template = Nuclide(1, 1)
@@ -128,8 +156,8 @@ class Neupy(NeutrinoEmission):
         for linear_chain in nuclide.decay_chain:
             nuclide.total_neutrino_profile += np.sum(np.vstack(linear_chain['weight_cum_neut'].values), axis=0)
             
-    def fission_induced_neutrinos(self, nuclide, fy, time, **flag_kwargs):
-        nuclide.concentration_profiles(time, **flag_kwargs)
+    def fission_induced_neutrinos(self, nuclide, fy, **flag_kwargs):
+        nuclide.concentration_profiles(**flag_kwargs)
         for linear_chain in nuclide.decay_chain:
             self.cumulative_neutrino_profile(linear_chain, **flag_kwargs)
             self.weighted_cumulative_neutrinos(linear_chain, fy)
@@ -137,6 +165,7 @@ class Neupy(NeutrinoEmission):
     
     def all_fission_induced_neutrinos(self, time: Union[list, np.ndarray], 
                                       neutron_energy_range: Union[Tuple[float], float, None] = None, 
+                                      use_elements: Union[str, List[str]] = ['U235', 'PU239', 'U233'],
                                       load_saved=False, 
                                       save = True,
                                       file_name = 'neutrino_results',
@@ -155,8 +184,15 @@ class Neupy(NeutrinoEmission):
                 fission_product_neutrino_data = pickle.load(f)
             return fission_product_neutrino_data
         
+        if isinstance(use_elements, str):
+            use_elements = [use_elements]
+
         fission_product_neutrino_data = dict()
         for fission_element, ne_dict in self.fy.items():
+
+            if fission_element not in use_elements:
+                continue
+            
             element_fpnd = dict()
             for ne, db in ne_dict.items():
                 
@@ -184,7 +220,7 @@ class Neupy(NeutrinoEmission):
                         print(f"Nuclide {AZI}'s decay chain depth exceeded maximum {max_chain_depth}")
                         continue
                     nuclide_neutrino_data.append(nuclide)
-                    total_neutrinos += nuclide.total_neutrino_profile
+                    total_neutrinos += np.maximum(0, nuclide.total_neutrino_profile)            # Set min value to 0
                 element_fpnd[ne] = {"total_neutrinos": total_neutrinos, 'nuclide_specific': nuclide_neutrino_data}
             fission_product_neutrino_data[fission_element] = element_fpnd
         
@@ -198,9 +234,14 @@ class Neupy(NeutrinoEmission):
         # Basic thermal model, where U235 makes up 94% of the thermal power generation
         return {'U235': 0.94 * thermal_power / u235_energy_per_fission_MeV}
     
-    def cummulative_neutrinos_from_burn_rate(self, burn_rate: dict, time: Union[list, np.ndarray], 
+    def cummulative_neutrinos_from_burn_rate(self, burn_rate: dict, time: Union[list, np.ndarray],
+                                             assumed_on_prior_s: float=0, 
                                              **fiss_induced_neut_kwargs):
         fy_neutrinos = self.all_fission_induced_neutrinos(time, **fiss_induced_neut_kwargs)
+        prior_time = None
+        if assumed_on_prior_s > 0:
+            print(f'Including assumed cumulative neutrinos with prior {assumed_on_prior_s}s')
+            prior_time = self.all_fission_induced_neutrinos(assumed_on_prior_s, **fiss_induced_neut_kwargs)
         dt = time[1] - time[0]
 
         cummulative_neutrinos = dict()
@@ -215,6 +256,8 @@ class Neupy(NeutrinoEmission):
             for ne, neutrino_data in element_neutrinos.items():
                 total_neutrinos = neutrino_data['total_neutrinos']
                 cum_neutrinos = 0
+                if prior_time is not None:
+                    cum_neutrinos = burn_profile[0] * assumed_on_prior_s * prior_time[element][ne]['total_neutrinos'] 
                 for i, instant_burn_rate in enumerate(burn_profile):
                     neut_array = np.zeros(len(time))
                     neut_array[i:] = total_neutrinos[i:]
@@ -224,7 +267,35 @@ class Neupy(NeutrinoEmission):
             cummulative_neutrinos[element] = cum_neut_for_elem
 
         return cummulative_neutrinos
+    
+    def slope(self, array, dx):
+        """
+        Find slope at each point, using central difference method for index's i, 0 < i < N, with forward
+        and backward difference method for the ends.
+        """
+        central_diff = (array[2:]-array[:-2])/(2 * dx)
+        start = (array[1] - array[0])/dx
+        end = (array[-1] - array[-2])/dx
+        slope = np.append(start, central_diff)
+        slope = np.append(slope, end)
+        return slope
 
+    def neutrino_emission_rate(self, burn_rate: dict,
+                               time: Union[list, np.ndarray],
+                               assumed_on_prior_s: float = 0,
+                               **fiss_induced_neut_kwargs) -> Dict[str, Dict[str, np.ndarray]]:
+        
+        cum_neutrinos = self.cummulative_neutrinos_from_burn_rate(burn_rate, time, assumed_on_prior_s=assumed_on_prior_s, 
+                                                                  **fiss_induced_neut_kwargs)
+        emission_rate = dict()
+        dt = time[1] - time[0]
+        for element, ne_dict in cum_neutrinos.items():
+            element_emission_rate = dict()
+            for ne, neutrino_data in ne_dict.items():
+                element_emission_rate[ne] = np.gradient(neutrino_data, dt)
+            emission_rate[element] = element_emission_rate
+        
+        return emission_rate
             
             
 
@@ -242,8 +313,8 @@ if __name__ == "__main__":
     # pprint(neupy.fy)
     thermal_power = np.zeros(len(time))
     thermal_power[100:200] = 20e6  # 20 MW
-
-    cum_neutrinos = neupy.cummulative_neutrinos_from_burn_rate({'U235': thermal_power}, time, load_saved=True)
+    burn_rate = neupy.convert_thermal_to_burn_rate(thermal_power)
+    cum_neutrinos = neupy.neutrino_emission_rate(burn_rate, time)
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots()

@@ -53,6 +53,40 @@ class Bateman:
             frac += exp_term/denom
         return self.N10 * prod * frac
 
+    def integral_bateman_equation(self, t):
+        """
+        Taking the integral of the bateman equation just divides the terms by -λi.
+        
+        ∫Nn(t)dt = N1(0)(Π_{i=1}^{n-1})Σ_{i=1}^{n} ( ∫e^{-λit}dt / (Π_{j=1, j≠i}^{n} (λj - λi))
+                 = -N1(0)/λi * (Π_{i=1}^{n-1})Σ_{i=1}^{n} ( e^{-λit} / (-λiΠ_{j=1, j≠i}^{n} (λj - λi))
+        """
+        prod = np.prod(self.lambdai[:self.n])
+        frac = 0
+        for i, L in enumerate(self.lambdai[:self.n+1]):
+            denom = np.prod([l-L for j, l in enumerate(self.lambdai[:self.n+1]) if i != j])
+            exp_term = np.exp(-L*t)/-L
+            if denom == 0:
+                self._debug_record['bateman_denom_error'].append({'nuclide': self.AZI, "denom_vals": [(l,L) for j, l in enumerate(self.lambdai[:self.n+1]) if i != j]})
+                continue
+            frac += exp_term/denom
+        return self.N10 * prod * frac
+    
+    def derivative_bateman_equation(self, t):
+        """
+        Taking the derivative of the bateman equation just multiplies the exponential terms by -λi.
+        
+        dNn(t)/dt = N1(0)(Π_{i=1}^{n-1})Σ_{i=1}^{n} ( -λie^{-λit} / (Π_{j=1, j≠i}^{n} (λj - λi))
+        """
+        prod = np.prod(self.lambdai[:self.n])
+        frac = 0
+        for i, L in enumerate(self.lambdai[:self.n+1]):
+            denom = np.prod([l-L for j, l in enumerate(self.lambdai[:self.n+1]) if i != j])
+            exp_term = np.exp(-L*t)/-L
+            if denom == 0:
+                self._debug_record['bateman_denom_error'].append({'nuclide': self.AZI, "denom_vals": [(l,L) for j, l in enumerate(self.lambdai[:self.n+1]) if i != j]})
+                continue
+            frac += exp_term/denom
+        return self.N10 * prod * frac
 
 class Nuclide:
 
@@ -408,14 +442,16 @@ f'''{mermaid_flow}
     def concentration_profiles(self, allow_theoretical=True, *args, **kwargs):
         """
         calculate the concentration profiles of your decay chains for this nuclide. These will be saved
-        in self.decay_chain in a new column. These concentrations are calculated using the Bateman equations
+        in self.decay_chain in a new column called 'concentration_profile'. These concentrations are the
+        bateman_equation methods of the Bateman object, where the Bateman objects are is stored in the
+        'bateman_object' column.
 
         Parameters
         ---------------
         *args, passed to self.make_decay_chain
         **kwargs, passed to self.make_decay_chain
 
-        self.make_decay_chain.__docs__
+        self.make_decay_chain.__docs__ 
         ---------------
         Decay chains are generated using the decay mode information for the nuclide for each generation of the decay chain. 
         
@@ -443,8 +479,8 @@ f'''{mermaid_flow}
             self.get_half_life_and_convert(chain_index, allow_theoretical)
             half_lives = self.decay_chain[chain_index]['half_life'].values
             lambdai = [0 if hl[0] == 'stbl' else self.convert_half_lives_to_decay_constant(hl[0]) for hl in half_lives]
-            self.decay_chain[chain_index]['bateman_object'] = self.decay_chain[chain_index].apply(lambda row: Bateman(row.name, lambdai))
-            self.decay_chain[chain_index]['concentration_profile'] = self.decay_chain[chain_index]['bateman_object'].apply(lambda bateman_object: bateman_object.bateman_equation, axis=1)
+            self.decay_chain[chain_index]['bateman_object'] = self.decay_chain[chain_index].apply(lambda row: Bateman(row.name, lambdai), axis=1)
+            self.decay_chain[chain_index]['concentration_profile'] = self.decay_chain[chain_index]['bateman_object'].apply(lambda bateman_object: bateman_object.bateman_equation)
 
 if __name__ == "__main__":
     nuclide = Nuclide(AZI='0910420')

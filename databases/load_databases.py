@@ -115,18 +115,22 @@ def load_fyu235thermal(path: str='databases/') -> pd.DataFrame:
     return fiss_data
 
 
-def load_all_fy_databases(path: str='databases/') -> dict:
+def load_all_fy_databases(path: str='databases/', **break_ENDF_kwargs) -> dict:
     """
     Load any txt file of the form fy{}.txt file, add them to a dictionary with key {}
-    and add a column of AZI, assuming all fy files are in the same format (sep = "   ", header=0 with
-    columns "Z", "A", "Level", "YI", "YI uncert")
+    and add a column of AZI. 
 
     @params
     path: str, path where fy{}.txt files is contained.
+    **break_ENDF_kwargs passed to break_ENDF_db function. If save_file is not given
+    then we assume it to be False.
 
     @returns
     fiss_data: Dict[str: pd.DataFrame]
     """
+    if break_ENDF_kwargs.get('save_file', None) is None:
+        break_ENDF_kwargs['save_file'] = False
+
     files = os.listdir(path)
     db = {}
     for f in files:
@@ -138,7 +142,7 @@ def load_all_fy_databases(path: str='databases/') -> dict:
         if f[:2] != 'fy':
             continue
         key = f_split[0][2:]
-        fiss_data = break_ENSDF_db(path+f, save_file=False)
+        fiss_data = break_ENDF_db(path+f, **break_ENDF_kwargs)
         db[key] = fiss_data
     return db
 
@@ -158,7 +162,7 @@ def unique_decay_modes(nubase: pd.DataFrame):
                     print(row)
             unique_dm.add(d)
 
-def break_ENSDF_db(filename: str, save_file=True):
+def break_ENDF_db(filename: str, save_file=True):
     with open(filename, 'r') as f:
         lines = f.readlines()
 
@@ -203,4 +207,4 @@ def break_ENSDF_db(filename: str, save_file=True):
 
 
 if __name__ == "__main__":
-    tables = break_ENSDF_db('databases/fyU235.txt', save_file=False)
+    tables = break_ENDF_db('databases/fyU235.txt', save_file=False)
