@@ -11,6 +11,49 @@ from config import *
 class DecayChainDepthWarning(Warning):
     pass
 
+class Bateman:
+
+    def __init__(self, n: int, lambdai: Union[np.ndarray, list], N10: float=1.0):
+        self.n = n
+        self.lambdai = lambdai
+        self.N10 = N10     
+        self._debug_record = dict()   
+    
+    @staticmethod
+    def bateman_equation_latex(n):
+        for nn in range(n):
+            prod_str = ''.join(['\lambda_{{{0}}}'.format(i+1) for i in range(nn)])
+            frac_str = ''
+            for i in range(nn+1):
+                denom_str = ''.join(['(\lambda_{{{0}}}-\lambda_{{{1}}})'.format(j+1, i+1) for j in range(nn+1) if j != i])
+                frac_str += '{1}{0} e^{{-\lambda_{{{2}}}t}}{3}'.format(r"\frac{" if nn>0 else "","" if i==0 else "+", i+1, "}}{{{0}}}".format(denom_str) if nn > 0 else "")
+            print(r'N_{{{0}}}(t) &= N_1(0)\times{1}\times\left({2}\right)'.format(nn+1, prod_str, frac_str), r'\\')
+
+    def bateman_equation(self, t):
+        """
+        lambdai is an array of length n, [lambda0, lambda1, ... lambdan], where we are calculating Nn
+
+        Bateman equations are
+
+        dN1(t)/dt = -λ1N1(t)
+        dNi(t)/dt = -λiNi(t) + λ(i-1)N(i-1)(t)
+        dNk(t)/dt = λ(k-1)N(k-1)(t)
+        
+        With general solutions
+        Nn(t) = N1(0)(Π_{i=1}^{n-1}λi)Σ_{i=1}^{n} ( e^{-λit} / (Π_{j=1, j≠i}^{n} (λj - λi))
+        """
+        prod = np.prod(self.lambdai[:self.n])
+        frac = 0
+        for i, L in enumerate(self.lambdai[:self.n+1]):
+            denom = np.prod([l-L for j, l in enumerate(self.lambdai[:self.n+1]) if i != j])
+            exp_term = np.exp(-L*t)
+            if denom == 0:
+                self._debug_record['bateman_denom_error'].append({'nuclide': self.AZI, "denom_vals": [(l,L) for j, l in enumerate(self.lambdai[:self.n+1]) if i != j]})
+                continue
+            frac += exp_term/denom
+        return self.N10 * prod * frac
+
+
 class Nuclide:
 
     def __init__(self, A: int=None, Z: int=None, level: int = 0, AZI:int=None, nubase: pd.DataFrame=None, fy: dict=None, config_file: dict=None, nubase_config: dict=None, search_in_fy=False,
@@ -346,41 +389,6 @@ f'''{mermaid_flow}
         if nubase_half_life[1] == '#' and allow_theoretical:
             return nubase_half_life[0], '#'
         return nubase_half_life
-    
-    @staticmethod
-    def bateman_equation_latex(n):
-        for nn in range(n):
-            prod_str = ''.join(['\lambda_{{{0}}}'.format(i+1) for i in range(nn)])
-            frac_str = ''
-            for i in range(nn+1):
-                denom_str = ''.join(['(\lambda_{{{0}}}-\lambda_{{{1}}})'.format(j+1, i+1) for j in range(nn+1) if j != i])
-                frac_str += '{1}{0} e^{{-\lambda_{{{2}}}t}}{3}'.format(r"\frac{" if nn>0 else "","" if i==0 else "+", i+1, "}}{{{0}}}".format(denom_str) if nn > 0 else "")
-            print(r'N_{{{0}}}(t) &= N_1(0)\times{1}\times\left({2}\right)'.format(nn+1, prod_str, frac_str), r'\\')
-
-    def bateman_equation(self, row, t: Union[list, np.ndarray], lambdai, N10=1):
-        """
-        lambdai is an array of length n, [lambda0, lambda1, ... lambdan], where we are calculating Nn
-
-        Bateman equations are
-
-        dN1(t)/dt = -λ1N1(t)
-        dNi(t)/dt = -λiNi(t) + λ(i-1)N(i-1)(t)
-        dNk(t)/dt = λ(k-1)N(k-1)(t)
-        
-        With general solutions
-        Nn(t) = N1(0)(Π_{i=1}^{n-1}λi)Σ_{i=1}^{n} ( e^{-λit} / (Π_{j=1, j≠i}^{n} (λj - λi))
-        """
-        n = row.name
-        prod = np.prod(lambdai[:n])
-        frac = 0
-        for i, L in enumerate(lambdai[:n+1]):
-            denom = np.prod([l-L for j, l in enumerate(lambdai[:n+1]) if i != j])
-            exp_term = np.exp(-L*t)
-            if denom == 0:
-                self._debug_record['bateman_denom_error'].append({'nuclide': self.AZI, "denom_vals": [(l,L) for j, l in enumerate(lambdai[:n+1]) if i != j]})
-                continue
-            frac += exp_term/denom
-        return N10 * prod * frac
 
     def get_half_life_and_convert(self, chain_index, allow_theoretical):
         linear_chain = self.decay_chain[chain_index]
@@ -397,13 +405,30 @@ f'''{mermaid_flow}
             return 0
         return np.log(2)/half_life
 
-    def concentration_profiles(self, time, allow_theoretical=True, *args, **kwargs):
+    def concentration_profiles(self, allow_theoretical=True, *args, **kwargs):
         """
         calculate the concentration profiles of your decay chains for this nuclide. These will be saved
         in self.decay_chain in a new column. These concentrations are calculated using the Bateman equations
 
-        ## Params
+        Parameters
+        ---------------
         *args, passed to self.make_decay_chain
+        **kwargs, passed to self.make_decay_chain
+
+        self.make_decay_chain.__docs__
+        ---------------
+        Decay chains are generated using the decay mode information for the nuclide for each generation of the decay chain. 
+        
+        This method recursively generates the decay modes, only exiting the recursion if it meets a stable nuclide. 
+
+        Parameters
+        ---------------
+        include_isomer_decay: bool=False, If the fission product is in a higher energy level, then you can choose whether to include 
+                                            it's internal decay as part of the decay chain by setting include_isomer_decay to True, 
+                                            default is False.
+        allow_energetically_possible: bool=False, Some decay modes are energetically possible but not observed. You can choose to
+                                                  allow or disallow these decay paths using this toggle. By default it's set to True.
+        path_num: leave as '', it is passed on during the recursion.
         """
         
         if isinstance(self.decay_chain, pd.DataFrame):
@@ -418,9 +443,8 @@ f'''{mermaid_flow}
             self.get_half_life_and_convert(chain_index, allow_theoretical)
             half_lives = self.decay_chain[chain_index]['half_life'].values
             lambdai = [0 if hl[0] == 'stbl' else self.convert_half_lives_to_decay_constant(hl[0]) for hl in half_lives]
-            self.decay_chain[chain_index]['concentration_profile'] = self.decay_chain[chain_index].apply(lambda row: self.bateman_equation(row, time, lambdai), axis=1)
-        
-
+            self.decay_chain[chain_index]['bateman_object'] = self.decay_chain[chain_index].apply(lambda row: Bateman(row.name, lambdai))
+            self.decay_chain[chain_index]['concentration_profile'] = self.decay_chain[chain_index]['bateman_object'].apply(lambda bateman_object: bateman_object.bateman_equation, axis=1)
 
 if __name__ == "__main__":
     nuclide = Nuclide(AZI='0910420')
