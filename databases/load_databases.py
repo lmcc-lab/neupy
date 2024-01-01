@@ -8,13 +8,14 @@ import logging
 import os
 import io
 import numpy as np
+from neupy import path
 
 """
 Transform Parsed_nubase2016.xlsx file into a SQL database. Data will be
 normalised into SI units, 
 """
 
-def load_nubase(path: str='databases/', filename: str='nubase2020.txt', log_level=logging.WARNING) -> pd.DataFrame:
+def load_nubase(path: str=f"{path}\\databases\\", filename: str='nubase2020.txt', log_level=logging.WARNING) -> pd.DataFrame:
     """
     We load the nubase2020.txt file, and we use the information in the config.yaml file
     to get the columns, and convert the data into the necessary format (float or string).
@@ -99,7 +100,7 @@ def load_config(config_path: str) -> dict:
     return config
 
 
-def load_fyu235thermal(path: str='databases/') -> pd.DataFrame:
+def load_fyu235thermal(path: str=f"{path}\\databases\\") -> pd.DataFrame:
     """
     Load fyu235thermal.txt file, and create a new column in AZI format.
 
@@ -115,7 +116,7 @@ def load_fyu235thermal(path: str='databases/') -> pd.DataFrame:
     return fiss_data
 
 
-def load_all_fy_databases(path: str='databases/', **break_ENDF_kwargs) -> dict:
+def load_all_fy_databases(path: str=f"{path}\\databases\\", **break_ENDF_kwargs) -> dict:
     """
     Load any txt file of the form fy{}.txt file, add them to a dictionary with key {}
     and add a column of AZI. 

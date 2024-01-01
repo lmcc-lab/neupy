@@ -1,15 +1,15 @@
 import pandas as pd
-from databases import load_databases as ld
+from neupy.databases import load_databases as ld
 from pprint import pprint
 import logging
 import numpy as np
-from typing import List, Union
+from typing import List, Union, Callable, Optional
 import os
-from config import *
+from neupy.config import *
+from neupy.module_exceptions.nuclide_exceptions import DecayChainDepthWarning
+from scipy.integrate import odeint
+from neupy import path
 
-
-class DecayChainDepthWarning(Warning):
-    pass
 
 class _Bateman:
 
@@ -58,7 +58,7 @@ class _Bateman:
 
     def integral_bateman_equation(self, t):
         """
-        Taking the integral of the bateman equation just divides the terms by -λi.
+        Taking the integral of the bateman equation just divides the exponential terms by -λi.
         
         ∫Nn(t)dt = N1(0)(Π_{i=1}^{n-1})Σ_{i=1}^{n} ( ∫e^{-λit}dt / (Π_{j=1, j≠i}^{n} (λj - λi))
                  = -N1(0)/λi * (Π_{i=1}^{n-1})Σ_{i=1}^{n} ( e^{-λit} / (-λiΠ_{j=1, j≠i}^{n} (λj - λi))
@@ -67,12 +67,16 @@ class _Bateman:
         frac = 0
         for i, L in enumerate(self.lambdai[:self.n+1]):
             denom = np.prod([l-L for j, l in enumerate(self.lambdai[:self.n+1]) if i != j])
-            exp_term = np.exp(-L*t)/-L
+            if L != 0:
+                exp_term = np.exp(-L*t)/-L
+            else:
+                exp_term = t
             if denom == 0:
                 self._debug_record['bateman_denom_error'].append({'nuclide': self.AZI, "denom_vals": [(l,L) for j, l in enumerate(self.lambdai[:self.n+1]) if i != j]})
                 continue
-            frac += exp_term/denom
-        return self.N10 * prod * frac
+            ci = prod/denom
+            frac += ci * exp_term + ci/L if L != 0 else ci * exp_term
+        return self.N10 * frac
     
     def derivative_bateman_equation(self, t):
         """
@@ -84,7 +88,7 @@ class _Bateman:
         frac = 0
         for i, L in enumerate(self.lambdai[:self.n+1]):
             denom = np.prod([l-L for j, l in enumerate(self.lambdai[:self.n+1]) if i != j])
-            exp_term = np.exp(-L*t)/-L
+            exp_term = -L * np.exp(-L*t)
             if denom == 0:
                 if self._debug_record.get('bateman_denom_error', None) is None:
                     self._debug_record = {'bateman_denom_error': []}
@@ -93,10 +97,30 @@ class _Bateman:
             frac += exp_term/denom
         return self.N10 * prod * frac
 
+
+class _BatemanProfile:
+
+    def __init__(self, bateman_object: _Bateman, bateman_method: str) -> None:
+        self.function = bateman_object.__getattribute__(bateman_method)
+    
+    def calculate(self, t):
+        return self.function(t)
+
+class _WeightedBatemanProfile(_BatemanProfile):
+
+    def __init__(self, bateman_object: _Bateman, bateman_method: str, intensity: float) -> None:
+        super().__init__(bateman_object, bateman_method)
+        self.intensity = intensity
+    
+    def calculate(self, t):
+        return self.intensity * self.function(t)
+
+
+
 class Nuclide:
 
     def __init__(self, A: int=None, Z: int=None, level: int = 0, AZI:int=None, nubase: pd.DataFrame=None, fy: dict=None, config_file: dict=None, nubase_config: dict=None, search_in_fy=False,
-                 force_level_0 = True) -> None:
+                 force_level_0 = True, database_path = f"{path}\\databases\\") -> None:
         """
         Search for a nuclide in the Nubase and Fission databases. If no database is provided in arguements
         nubase and fy, then it will load whatever databases it can from the databases folder. 
@@ -141,12 +165,12 @@ class Nuclide:
         # load nubase
         if nubase is None:
             try:
-                nubase, config_file = ld.load_nubase(log_level=logging.ERROR)
+                nubase, config_file = ld.load_nubase(path=database_path, log_level=logging.ERROR)
                 nubase_config = config_file['nubase2020']
             except FileNotFoundError:
                 print("WARNING: nubase2020.txt not found, trying nubase2016.txt\n")
                 try:
-                    nubase, config_file = ld.load_nubase(filename='nubase2016.txt', log_level=logging.ERROR)
+                    nubase, config_file = ld.load_nubase(path=database_path, filename='nubase2016.txt', log_level=logging.ERROR)
                     nubase_config = config_file['nubase2016']
                 except FileNotFoundError:
                     raise FileNotFoundError("Nuclide requires nubase2020.txt or nubase2016.txt to be present in .databases/ directory. Please check that one of these files exists.")
@@ -156,7 +180,7 @@ class Nuclide:
         self.nubase_config = nubase_config
 
         if fy is None:
-            fy = ld.load_all_fy_databases()
+            fy = ld.load_all_fy_databases(path=database_path)
         
         self.fy = fy
 
@@ -176,7 +200,13 @@ class Nuclide:
         self.decay_chain = pd.DataFrame([], columns=['nuclide', 'dm'])
         self.allow_energetically_possible_decay_paths = True
         self.br_intensity_extra_params = False
+        self.decay_chain_made = False
         self.total_neutrino_profile = 0
+        self.integral_total_neutrino_profile = 0
+        self.derivative_total_neutrino_profile = 0
+        self._focused_linear_chain = None
+        self.fission_yeild = None
+        self.total_neutrino_profile_with_xe_poisoning = 0
 
 
     @staticmethod
@@ -204,7 +234,7 @@ class Nuclide:
         """
         Decay chains are generated using the decay mode information for the nuclide for each generation of the decay chain. 
         
-        This method recursively generates the decay modes, only exiting the recursion if it meets a stable nuclide. 
+        This method recursively generates the decay chain, only exiting the recursion if it meets a stable nuclide. 
 
         ## Params
         include_isomer_decay: bool=False, If the fission product is in a higher energy level, then you can choose whether to include 
@@ -214,6 +244,9 @@ class Nuclide:
                                                   allow or disallow these decay paths using this toggle. By default it's set to True.
         path_num: leave as '', it is passed on during the recursion.
         """
+        if self.decay_chain_made:
+            return
+
         generation += 1
         if generation == max_chain_depth:
             raise DecayChainDepthWarning(f"Max generations reached for nuclide {self.AZI}")
@@ -227,7 +260,7 @@ class Nuclide:
         paths = br.split(';')                                           # Break them into the different decay modes (seperated by ';')
         decay_mode_key = self.nubase_config['decay_mode_key']           # Get the key from the config file
         es = self.nubase_config['equality_symbols']                     # Get the equality symbols from the config file
-        decay_paths = pd.DataFrame([], columns=['nuclide', 'dm', 'intensity', 'dintensity'])       # Initialise the decay_paths dataframe. Dataframe structure is | decay_path (Index) | nuclide | dm |  
+        decay_paths = pd.DataFrame([], columns=['nuclide', 'dm', 'intensity', 'dintensity', 'AZI'])       # Initialise the decay_paths dataframe. Dataframe structure is | decay_path (Index) | nuclide | dm |  
         path_num_offset = 0
         for new_path_num, path in enumerate(paths):                     # Go through the decay modes of the nuclide, labeling the path num using new_path_num
 
@@ -258,7 +291,8 @@ class Nuclide:
                                                                                                                                             # RAM usage
             df = pd.DataFrame({"nuclide": [next_nuclide], "dm": [dm], 
                                "intensity": [self.convert_intensity_to_decimal(ratio)], 
-                               'dintensity': [self.convert_intensity_to_decimal(dratio)]}, 
+                               'dintensity': [self.convert_intensity_to_decimal(dratio)],
+                               "AZI": next_gen}, 
                                index=[path_num+str(new_path_num - path_num_offset)])  # Update the decay_path dataframe with the next nuclide. Path_num
             decay_paths = pd.concat([decay_paths, df])                                                      # is updated as a string representing the decay path of the decay
                                                                                                             # chain. For example, if path_num is 0, and new_path_num is 1, then
@@ -272,7 +306,6 @@ class Nuclide:
             self.decay_chain = pd.concat([self.decay_chain, path['nuclide'].decay_chain])               # the next generation, passing in the parents path_num to keep track of 
                                                                                                         # the decay chain family. When the recursion is done, add this to self.decay_chain
 
-
     def break_decay_chain_branches(self) -> None:
         """
         This method seperates the decay chains generated using self.make_decay_chain into the individual 
@@ -283,6 +316,10 @@ class Nuclide:
         'dm', like that of the original self.decay_chain, and each element of the list is the unique
         decay chain.
         """
+        self.decay_chain_made = True
+        if isinstance(self.decay_chain, list):
+            print("Branches already broken")
+            return
         linear_chain = []
         replica_decay_chain = self.decay_chain.copy()               # Make a copy of the original decay chain
         replica_decay_chain['used'] = False                         # Make a new column called 'used' and set all values to False. This will keep track of
@@ -299,7 +336,8 @@ class Nuclide:
                          "dm": [row.dm],
                          "intensity": [row.intensity],
                          "dintensity": [row.dintensity],
-                         "path_index": [path_num]}
+                         "path_index": [path_num],
+                         "AZI": [row.AZI]}
             flag_used = [path_num]                                  # Record what paths have been used
             for follow_path in range(1, len(path_num)):             # Index through the path_num, excluding the last number. For example, if the path_num is 
                 prev_nuclide_path = path_num[:-follow_path]         # 600, then these two lines make the previous path: 60, 6. Therefore, we are going from
@@ -310,6 +348,7 @@ class Nuclide:
                 this_path['intensity'].append(prev_nuclide.intensity)
                 this_path['dintensity'].append(prev_nuclide.dintensity)
                 this_path['path_index'].append(prev_nuclide_path)
+                this_path['AZI'].append(prev_nuclide.AZI)
                 flag_used.append(prev_nuclide_path)                                             # Add used flag            
             replica_decay_chain.loc[flag_used, 'used'] = True       # Update replica_decay_chain used column with used flag
             this_path['nuclide'].reverse()                          # reverse order of this_path so it's in order [Parent, child, grandchild, ...] for a branch
@@ -317,6 +356,7 @@ class Nuclide:
             this_path['intensity'].reverse()
             this_path['dintensity'].reverse()
             this_path['path_index'].reverse()
+            this_path['AZI'].reverse()
             this_path = pd.DataFrame(this_path)
             linear_chain.append(this_path)                          # Add this path to the linear chain
         self.decay_chain = linear_chain                             # Update self.decay_chain with the linear chains.
@@ -327,14 +367,15 @@ class Nuclide:
         return f'{element} --"{note}"--> {connect_to}'
     
     @staticmethod
-    def _make_folder(path: str) -> None:
+    def _make_folder(path: str, **kwargs) -> None:
         """Makes a folder given the desired path, only if the path doesn't already exist"""
+        cwd = kwargs.get('cwd', os.getcwd())
         if path[-1] == '/':
-            path = path[:-2]
-        if path not in os.listdir():
+            path = path[:-1]
+        if path not in os.listdir(cwd):
             os.makedirs(path)
 
-    def display_decay_chain(self, save_path: str='decay_chains/') -> List[pd.DataFrame]:
+    def display_decay_chain(self, save_path: str='decay_chains/', **kwargs) -> List[pd.DataFrame]:
         """
         Take the broken decay chains and return the same pandas dataframe but with the nuclide
         symbol instead of the nuclide object location. This is used for visually checking that
@@ -346,6 +387,7 @@ class Nuclide:
         ## Params
         save_path: str, default is decay_chains/, the path you want to save your mermaid.md
                         diagrams
+        **kwargs: passed to _make_folder method
         
         ## Returns
         replica_decay_chain: List[pd.DataFrame], a list of the linear branches an element can
@@ -403,8 +445,10 @@ f'''{mermaid_flow}
                                                                                                           # to the symbols
         mermaid_template += '```'
         
-        self._make_folder(save_path)                                 # make the folder (if needed)
-        with open(f"{save_path}{self.nuclide_nubase_info.loc[self.AZI, 'A El']} decay chain.md", 'w+') as f: # save the mermaid file
+        self._make_folder(save_path, **kwargs)                                 # make the folder (if needed)
+        cwd = kwargs.get('cwd', os.getcwd())
+        save_path = '\\'+save_path.replace('/', '\\')
+        with open(f"{cwd}{save_path}{self.nuclide_nubase_info.loc[self.AZI, 'A El']} decay chain.md", 'w+') as f: # save the mermaid file
             f.writelines(mermaid_template)
             
         return replica_decay_chain                                  # return the updated readable decay chain  
@@ -444,7 +488,7 @@ f'''{mermaid_flow}
             return 0
         return np.log(2)/half_life
 
-    def concentration_profiles(self, allow_theoretical=True, *args, **kwargs):
+    def initialise_bateman_objects(self, allow_theoretical=True, *args, **kwargs):
         """
         calculate the concentration profiles of your decay chains for this nuclide. These will be saved
         in self.decay_chain in a new column called 'concentration_profile'. These concentrations are the
@@ -479,13 +523,124 @@ f'''{mermaid_flow}
         
         
         for chain_index, linear_chain in enumerate(self.decay_chain):
-            self_chain_data = pd.DataFrame({"nuclide": [self], "dm": [None], "intensity": 1.0, "dintensity": 0.0, "path_index": [None]})
+            self_chain_data = pd.DataFrame({"nuclide": [self], "dm": [None], "intensity": 1.0, "dintensity": 0.0, "path_index": [None], 'AZI': self.AZI})
             self.decay_chain[chain_index] = pd.concat([self_chain_data, linear_chain], ignore_index=True)
             self.get_half_life_and_convert(chain_index, allow_theoretical)
             half_lives = self.decay_chain[chain_index]['half_life'].values
             lambdai = [0 if hl[0] == 'stbl' else self.convert_half_lives_to_decay_constant(hl[0]) for hl in half_lives]
             self.decay_chain[chain_index]['bateman_object'] = self.decay_chain[chain_index].apply(lambda row: _Bateman(row.name, lambdai, self.AZI), axis=1)
-            self.decay_chain[chain_index]['concentration_profile'] = self.decay_chain[chain_index]['bateman_object'].apply(lambda bateman_object: bateman_object.bateman_equation)
+    
+    @staticmethod
+    def concentration_profile(linear_chain: pd.DataFrame):
+        return linear_chain.apply(lambda row: _BatemanProfile(row.bateman_object, 'bateman_equation').calculate, axis=1)
+
+    def calculate_profiles(self, t, linear_chain):
+        df = self.concentration_profile(linear_chain)
+        return df.apply(lambda row: row(t))
+
+    def _map_element_wise_multiplication(self, vec1, vec2):
+        calc = 0
+        for elem in vec1:
+            calc += elem * vec2
+        return calc
+
+    def nuclide_concentration_profile(self, *args, **kwargs):
+        """
+        *args and **kwargs passed to self.make_decay_chain
+        """
+        if isinstance(self.decay_chain, pd.DataFrame,):
+            if self.decay_chain.shape[0] == 0:
+                self.make_decay_chain(*args, **kwargs)
+            self.break_decay_chain_branches()
+
+        concentration_profile = []
+        for linear_chain in self.decay_chain:
+            concentration_profile.append(linear_chain.apply(lambda row: _WeightedBatemanProfile(row.bateman_object, 'bateman_equation', row.intensity).calculate, axis=1))
+        return concentration_profile
+        
+    
+    def xe_poisoning(self, **neutron_kwargs):
+        """
+        Xe135 poisoning transmutates Xe135 to Xe136. This can be included in the concentration models
+        
+        neutron_kwargs are passed to _XeConcentrationModel. There are three kwargs, which are
+        neutron_percent: Union[Callable, float] = 1.0, 
+        neutron_flux: float = 1.6e9,
+        cross_section: float = 2.805e-18
+        """
+        Xe135AZI = '1350540'
+        focused_AZI = ['1350530', Xe135AZI, '1350550', '1350560']
+        # go through decay chains in this nuclide, and check if Xe135 is present
+        for i, linear_chain in enumerate(self.decay_chain):
+            # Check if Xe135 is in linear_chain
+            linear_chain['XePoisObject'] = linear_chain['bateman_object'].apply(lambda row: row.bateman_equation)
+            linear_chain['XePois'] = linear_chain['XePoisObject'].copy()
+
+            half_lives = linear_chain['half_life'].values
+
+            half_lives = [hl for AZI, hl in zip(linear_chain['AZI'].values, half_lives) if AZI in focused_AZI]
+
+            lambdai = [0 if hl[0] == 'stbl' else self.convert_half_lives_to_decay_constant(hl[0]) for hl in half_lives]
+            
+            precursor_concentration = None
+            precursor_dc = None
+
+            linear_chain_size = linear_chain.shape[0]
+
+            if '1350530' in linear_chain['AZI'].values:
+                precursor_concentration = linear_chain.loc[linear_chain_size-4,'bateman_object'].bateman_equation
+                precursor_dc = lambdai[0]
+                lambdai = lambdai[1:]
+            linear_chain.loc[linear_chain_size-3:, 'XePoisObject'] = linear_chain[linear_chain_size-3:].apply(lambda row: _XePoisConc(row.name-linear_chain_size+3, lambdai, precursor_concentration=precursor_concentration, precursor_decay_constant=precursor_dc, **neutron_kwargs), axis=1)
+            linear_chain.loc[linear_chain_size-3:, 'XePois'] = linear_chain.loc[linear_chain_size-3:, 'XePoisObject'].apply(lambda row: row.calculate)
+
+            Xe136 = Nuclide(136, 54, nubase=self.nubase, fy=self.fy, nubase_config=self.nubase_config,
+                            config_file = self.config)
+            
+            Xe136_concentration = _XePoisConc(3, lambdai, linear_chain.loc[linear_chain_size-4, 'XePois'], lambdai[-3], **neutron_kwargs)
+            
+            Xe136_contribution = pd.DataFrame([[Xe136, Xe136.AZI, ('stbl', None), Xe136_concentration.calculate, Xe136_concentration]], columns=['nuclide', 'AZI', 'half_life', 'XePois', 'XePoisObject'], index=[linear_chain.shape[0]])
+            
+            updated_linear_chain = pd.concat([linear_chain, Xe136_contribution], axis=0)
+
+            self.decay_chain[i] = updated_linear_chain
+    
+    def weighted_xe_poisoning(self, **neutron_kwargs):
+        self.xe_poisoning(**neutron_kwargs)
+        for linear_chain in self.decay_chain:
+            linear_chain['WeightXePois'] = linear_chain.apply(lambda row: _WeightedBatemanProfile(row.XePoisObject, 'calculate', row.intensity), axis=1)
+            
+
+class _XePoisConc:
+
+    def __init__(self, chain_index: int, xe_chain_decay_constants: List[Nuclide], precursor_concentration: Optional[_Bateman]=None, precursor_decay_constant: Optional[Nuclide]=None,
+                 neutron_percent: Union[Callable, float]=1.0,
+                 neutron_flux: float=1.6e9,
+                 neutron_cross_section: float = 2.805e-18
+                 ):
+        self.prior_concentration = precursor_concentration if precursor_concentration is not None else lambda t: 0
+        self.xe_creation_rate = precursor_decay_constant if precursor_decay_constant is not None else 0
+        self.xe_dc, self.cs_dc, self.ba_dc = xe_chain_decay_constants
+        self.n = chain_index
+        if callable(neutron_percent):
+            self.neutron_absorption_term = lambda t: neutron_percent(t) * neutron_flux * neutron_cross_section
+        else:
+            self.neutron_absorption_term = lambda t: neutron_percent * neutron_flux * neutron_cross_section
+        self.N0 = [0, 0, 0, 0] if precursor_concentration is not None else [1, 0, 0, 0]
+    
+    def model(self, N, t):
+        Nx, NCs, NBa, Nx136 = N
+        dNx = self.xe_creation_rate * self.prior_concentration(t)  - (self.xe_dc + self.neutron_absorption_term(t)) * Nx
+        dNCs = self.xe_dc * Nx - self.cs_dc * NCs
+        dNBa = self.cs_dc * NCs
+        dNx136 = self.neutron_absorption_term(t) * Nx
+        return [dNx, dNCs, dNBa, dNx136]
+    
+    def calculate(self, t):
+        N = odeint(self.model, self.N0, t)[:, self.n]
+        return N
+
+
 
 if __name__ == "__main__":
     nuclide = Nuclide(AZI='0910420')

@@ -1,16 +1,17 @@
-from nuclide import Nuclide, pprint, pd, np, DecayChainDepthWarning, max_chain_depth, _Bateman
-from databases.load_databases import load_all_fy_databases
+from neupy.nuclide import Nuclide, pprint, pd, np, DecayChainDepthWarning, max_chain_depth, _Bateman
+from neupy.databases.load_databases import load_all_fy_databases
 from tqdm import tqdm
 from typing import Union, Tuple, Dict, List
-from config import *
+from neupy.config import *
 import pickle
+from neupy import path, sublist
 
 
 class _CumulativeNeutrinos:
 
-    def __init__(self, neut_scale, concentration_profile: _Bateman) -> None:
+    def __init__(self, neut_scale, bateman_object: _Bateman, bateman_method: str) -> None:
         self.neut_scale = neut_scale
-        self.concentration_profile = concentration_profile
+        self.function = bateman_object.__getattribute__(bateman_method)
 
     def _map_element_wise_multiplication(self, vec1, vec2):
         row = vec1.flatten()
@@ -22,7 +23,17 @@ class _CumulativeNeutrinos:
         return calc
     
     def calculate(self, t):
-        return self._map_element_wise_multiplication(self.neut_scale, self.concentration_profile(t))
+        return self._map_element_wise_multiplication(self.neut_scale, self.function(t))
+
+class _CumulativeNeutrinosWithXePoisoning:
+
+    def __init__(self, neut_scale, nuclide: Nuclide) -> None:
+        self.nuclide = nuclide.xe_poisoning
+        self.neut_scale = neut_scale
+    
+    
+
+
 
 class _WeightedCumNeutrinos:
 
@@ -36,24 +47,26 @@ class _WeightedCumNeutrinos:
 
 class _TotalCumNeutrinos:
 
-    def __init__(self, nuclide: Nuclide):
+    def __init__(self, nuclide: Nuclide, linear_chain_column: str):
         self.nuclide = nuclide
+        self.column = linear_chain_column
     
     def calculate(self, t):
         total_neutrino_profile = 0
         for linear_chain in self.nuclide.decay_chain:
-            total_neutrino_profile += np.sum(np.vstack([cum_function(t) for cum_function in linear_chain['weight_cum_neut'].values]), axis=0)
+            total_neutrino_profile += np.sum(np.vstack([cum_function(t) for cum_function in linear_chain[self.column].values]), axis=0)
         return total_neutrino_profile
 
 class _FissionProductTotalNeutrinos:
 
-    def __init__(self, fission_nuclide_array: List[Nuclide]) -> None:
+    def __init__(self, fission_nuclide_array: List[Nuclide], nuclide_attribute: str) -> None:
         self.fission_nuclide_array = fission_nuclide_array
+        self.attribute = nuclide_attribute
     
     def calculate(self, t):
         total_neutrinos = 0
         for nuclide in self.fission_nuclide_array:
-            total_neutrinos += nuclide.total_neutrino_profile(t)
+            total_neutrinos += nuclide.__getattribute__(self.attribute)(t)
         return total_neutrinos
             
 
@@ -125,19 +138,23 @@ class NeutrinoEmission:
         return neut_vec
     
     def cumulative_neutrino_profile(self, linear_chain: pd.DataFrame, **neut_vec_kwargs):
-        if 'concentration_profile' not in linear_chain.columns:
-            raise ValueError("concentration_profile must have been calculated before running cumulative_neutrino_profile")
+        if 'bateman_object' not in linear_chain.columns:
+            raise ValueError("bateman_object must have been calculated before running cumulative_neutrino_profile")
         neut_vec_kwargs.pop('cumulative', None)
         neut_vec = self.neutrino_vec(linear_chain, cumulative=True, **neut_vec_kwargs)
         linear_chain['cum_neut'] = linear_chain.apply(
-            lambda row: _CumulativeNeutrinos(neut_vec[row.name], row.concentration_profile).calculate, axis=1)
+            lambda row: _CumulativeNeutrinos(neut_vec[row.name], row.bateman_object, 'bateman_equation').calculate, axis=1)
+        linear_chain['int_cum_neut'] = linear_chain.apply(
+            lambda row: _CumulativeNeutrinos(neut_vec[row.name], row.bateman_object, 'integral_bateman_equation').calculate, axis=1)
+        linear_chain['der_cum_neut'] = linear_chain.apply(
+            lambda row: _CumulativeNeutrinos(neut_vec[row.name], row.bateman_object, 'derivative_bateman_equation').calculate, axis=1)
             
     def check_neutrino_profile_type(self, linear_chain):
         cum_neutrino_test = (linear_chain.shape[0], *linear_chain.loc[0, 'cum_neut'].shape)
         if len(cum_neutrino_test) == 2:
             print("Cumulative neutrinos were calculated without seperating neutrino flavour or matter-antimatter\n"
-                  f"Slide index 0: Nuclide in decay chain, with {cum_neutrino_test[0]} nuclides"
-                  f"Slide index 1: Time, with length {cum_neutrino_test[1]}")
+                  f"Slice index 0: Nuclide in decay chain, with {cum_neutrino_test[0]} nuclides"
+                  f"Slice index 1: Time, with length {cum_neutrino_test[1]}")
         elif len(cum_neutrino_test) == 3 and cum_neutrino_test[1] == 2:
             print("Cummulative neutrinos were calculated with seperation of matter-antimatter, but not seperating flavour\n"
                   f"Slice index 0: Nuclide in decay chain, with {cum_neutrino_test[0]} nuclides\n"
@@ -147,13 +164,13 @@ class NeutrinoEmission:
             print("Cummulative neutrinos were calculated with seperation of flavour, but not matter-antimatter\n"
                   f"Slice index 0: Nuclide in decay chain, with {cum_neutrino_test[0]} nuclides\n"
                   "Slice index 1: flavour, e, mu, tau seperation index with index 0, 1, 2 respectively\n"
-                  f"Slide index 2: Time, with length {cum_neutrino_test[2]}")
+                  f"Slice index 2: Time, with length {cum_neutrino_test[2]}")
         elif len(cum_neutrino_test) == 4:
             print("Cummulative neutrinos were calculated with seperation of both flavour and matter-antimatter\n"
                   f"Slice index 0: Nuclide in decay chain, with {cum_neutrino_test[0]} nuclides\n"
                   "Slice index 1: Matter(antimatter) seperation index 0(1)\n"
                   "Slice index 2: flavour, e, mu, tau seperation index with index 0, 1, 2 respectively\n",
-                  f"Slide index 3: Time, with length {cum_neutrino_test[3]}")
+                  f"Slice index 3: Time, with length {cum_neutrino_test[3]}")
 
     
 class Neupy(NeutrinoEmission):
@@ -167,6 +184,8 @@ class Neupy(NeutrinoEmission):
         -------------------
         - fy_kwargs, passed to databases.load_databases.load_all_fy_databases
 
+        Docs from load_all_fy_databases
+        -------------------
         Load any txt file of the form fy{}.txt file, add them to a dictionary with key {}
         and add a column of AZI, assuming all fy files are in the same format (sep = "   ", header=0 with
         columns "Z", "A", "Level", "YI", "YI uncert")
@@ -179,18 +198,23 @@ class Neupy(NeutrinoEmission):
         """
         super().__init__()
         self.fy = load_all_fy_databases(**fy_kwargs)
-        self.nuclide_template = Nuclide(1, 1)
+        self.nuclide_template = Nuclide(1, 1, database_path=fy_kwargs.get('path', path+'\\databases\\'))
         self.missing_nuclides = []
+        self._fission_induced_neutrinos_cache = None
         
     def weighted_cumulative_neutrinos(self, linear_chain: pd.DataFrame, fission_yield: float):
         total_branch_ratio_intensity = np.prod(linear_chain['intensity'])
         linear_chain['weight_cum_neut'] = linear_chain.apply(lambda row: _WeightedCumNeutrinos(fission_yield, total_branch_ratio_intensity, row['cum_neut']).calculate, axis=1)
-    
+        linear_chain['weight_int_cum_neut'] = linear_chain.apply(lambda row: _WeightedCumNeutrinos(fission_yield, total_branch_ratio_intensity, row['int_cum_neut']).calculate, axis=1)
+        linear_chain['weight_der_cum_neut'] = linear_chain.apply(lambda row: _WeightedCumNeutrinos(fission_yield, total_branch_ratio_intensity, row['der_cum_neut']).calculate, axis=1)
+
     def total_weighted_neutrinos(self, nuclide: Nuclide):
-        nuclide.total_neutrino_profile = _TotalCumNeutrinos(nuclide).calculate
+        nuclide.total_neutrino_profile = _TotalCumNeutrinos(nuclide, 'weight_cum_neut').calculate
+        nuclide.integral_total_neutrino_profile = _TotalCumNeutrinos(nuclide, 'weight_int_cum_neut').calculate
+        nuclide.derivative_total_neutrino_profile = _TotalCumNeutrinos(nuclide, 'weight_der_cum_neut').calculate
             
     def fission_induced_neutrinos(self, nuclide: Nuclide, fy: float, **flag_kwargs):
-        nuclide.concentration_profiles(**flag_kwargs)
+        nuclide.initialise_bateman_objects(**flag_kwargs)
         for linear_chain in nuclide.decay_chain:
             self.cumulative_neutrino_profile(linear_chain, **flag_kwargs)
             self.weighted_cumulative_neutrinos(linear_chain, fy)
@@ -202,19 +226,37 @@ class Neupy(NeutrinoEmission):
                                       load_saved=False, 
                                       save = True,
                                       file_name = 'neutrino_results',
-                                      file_path = 'databases/',
+                                      file_path = f'',
                                       **kwargs) -> dict:
         """
+        
+        Parameters
+        -------------
         neutron_energy_range: Tuple[float] | float | None, if None it will include all database data without
         consideration of the neutron energy, if it's a float then it will only include databases where the
         neutron energy is what you gave it, otherwise it expects a tuple representing the start and end 
         of the neutron range in question (start, end) inclusive of both ends.
+
+        use_elements: str | List[str], default is ['U235', 'PU239', 'U233']. This specifies which fission elements
+        you want to focus on.
+
+        load_saved: bool, default is False. If True, it loads the file under {file_path}{file_name} to reduce
+        time spent recalculating everything.
+
+        save: bool, default is True. If True, it saves the results in a file under {file_path}{file_name}.
+
+        file_name: str, default is 'neutrino_results'.
+
+        file_path: str, default is 'databases/' 
+
+        **kwargs: passed on to fission_induced_neutrinos
         
         """
         if load_saved:
-            print('loading fission data')
+            print(f'loading fission data from {file_path}{file_name}.pickle')
             with open(f'{file_path}{file_name}.pickle', 'rb') as f:
                 fission_product_neutrino_data = pickle.load(f)
+            print('Fission data loaded')
             return fission_product_neutrino_data
         
         if isinstance(use_elements, str):
@@ -242,6 +284,7 @@ class Neupy(NeutrinoEmission):
                         continue
                     AZI = i
                     nuclide = Nuclide(AZI=AZI, nubase=self.nuclide_template.nubase, fy=self.fy, config_file=self.nuclide_template.config, nubase_config=self.nuclide_template.nubase_config)
+                    nuclide.fission_yeild = row.Y
                     # print(AZI)
                     if not nuclide.found:
                         self.missing_nuclides.append(AZI)
@@ -252,12 +295,17 @@ class Neupy(NeutrinoEmission):
                         print(f"Nuclide {AZI}'s decay chain depth exceeded maximum {max_chain_depth}")
                         continue
                     nuclide_neutrino_data.append(nuclide)
-                element_fpnd[ne] = {"total_neutrinos": _FissionProductTotalNeutrinos(nuclide_neutrino_data).calculate, 'nuclide_specific': nuclide_neutrino_data}
+                element_fpnd[ne] = {"total_neutrinos": _FissionProductTotalNeutrinos(nuclide_neutrino_data, 'total_neutrino_profile').calculate, 
+                                    "int_total_neutrinos": _FissionProductTotalNeutrinos(nuclide_neutrino_data, 'integral_total_neutrino_profile').calculate,
+                                    "der_total_neutrinos": _FissionProductTotalNeutrinos(nuclide_neutrino_data, 'derivative_total_neutrino_profile').calculate,
+                                    'nuclide_specific': nuclide_neutrino_data}
             fission_product_neutrino_data[fission_element] = element_fpnd
         
         if save:
             with open(f'{file_path}{file_name}.pickle', 'wb+') as f:
                 pickle.dump(fission_product_neutrino_data, f)
+
+        self._fission_induced_neutrinos_cache = fission_product_neutrino_data
 
         return fission_product_neutrino_data
     
@@ -265,11 +313,27 @@ class Neupy(NeutrinoEmission):
         # Basic thermal model, where U235 makes up 94% of the thermal power generation
         return {'U235': 0.94 * thermal_power / u235_energy_per_fission_MeV}
     
+    def nuclide_cummulative_neutrinos_from_burn_rate(self, nuclide: Nuclide, burn_rate: Union[float, np.ndarray], 
+                                                     time: Union[list, np.ndarray]):
+        neutrinos = nuclide.total_neutrino_profile(time)
+        dt = time[1] - time[0]
+        cum_neutrinos = 0
+        for i,_ in enumerate(time):
+            neut_array = np.zeros(len(time))
+            neut_array[i:] = neutrinos[i:]
+            cum_neutrinos += burn_rate * neut_array * dt
+        return cum_neutrinos
+
     def cummulative_neutrinos_from_burn_rate(self, burn_rate: dict, time: Union[list, np.ndarray],
                                              assumed_on_prior_s: float=0, 
                                              **fiss_induced_neut_kwargs):
-        fy_neutrinos = self.all_fission_induced_neutrinos(time, **fiss_induced_neut_kwargs)
+        fy_neutrinos = self.all_fission_induced_neutrinos(**fiss_induced_neut_kwargs)
         dt = time[1] - time[0]
+
+        if assumed_on_prior_s > 0:
+            extended_time = np.linspace(0, assumed_on_prior_s, int(assumed_on_prior_s/dt))
+            time = np.append(extended_time, time + assumed_on_prior_s)
+            print("Extended time")
 
         cummulative_neutrinos = dict()
         for element, burn_profile in burn_rate.items():
@@ -279,15 +343,21 @@ class Neupy(NeutrinoEmission):
                 continue
             
             cum_neut_for_elem = dict()
+            
+            if assumed_on_prior_s > 0:
+                extended_burn_rate = np.linspace(burn_profile[0], burn_profile[0], len(extended_time))
+                burn_profile = np.append(extended_burn_rate, burn_profile)
 
             for ne, neutrino_data in element_neutrinos.items():
+                print("Calculating cumulative neutrinos over time span")
                 total_neutrinos = neutrino_data['total_neutrinos'](time)
                 cum_neutrinos = 0
-                for i, instant_burn_rate in enumerate(burn_profile):
+                print("Done")
+                for i, instant_burn_rate in enumerate(tqdm(burn_profile, total=len(time), desc=f"Cum neut {element} {ne}")):
                     neut_array = np.zeros(len(time))
                     neut_array[i:] = total_neutrinos[i:]
                     cum_neutrinos += instant_burn_rate * neut_array * dt
-                cum_neut_for_elem[ne] = cum_neutrinos
+                cum_neut_for_elem[ne] = cum_neutrinos[int(assumed_on_prior_s/dt):]
 
             cummulative_neutrinos[element] = cum_neut_for_elem
 
@@ -305,25 +375,84 @@ class Neupy(NeutrinoEmission):
         slope = np.append(slope, end)
         return slope
 
-    def neutrino_emission_rate(self, burn_rate: dict,
-                               time: Union[list, np.ndarray],
+    def neutrino_emission_rate(self, burn_rate: Union[dict, None]=None,
+                               time: Union[list, np.ndarray, None]=None,
                                assumed_on_prior_s: float = 0,
-                               **fiss_induced_neut_kwargs) -> Dict[str, Dict[str, np.ndarray]]:
+                               cum_neutrinos: Union[None, Dict[str, Dict[str, np.ndarray]]]=None,
+                               dt: float = 1.0,
+                               **fiss_induced_neut_kwargs) -> Union[Dict[str, Dict[str, np.ndarray]], Tuple[Dict, float]]:
         
-        cum_neutrinos = self.cummulative_neutrinos_from_burn_rate(burn_rate, time, assumed_on_prior_s=assumed_on_prior_s, 
-                                                                  **fiss_induced_neut_kwargs)
+        if (burn_rate is None and time is None) and cum_neutrinos is None:
+            raise ValueError("Burn rate and time have to be provided, or cum_neutrinos")
+        
+        if any([check is None for check in [burn_rate, time]]) and cum_neutrinos is None:
+            raise ValueError("Must provide both burn_rate and time if cum_neutrinos are not provided.")
+
+        if cum_neutrinos is None:
+            cum_neutrinos = self.cummulative_neutrinos_from_burn_rate(burn_rate, time, assumed_on_prior_s=assumed_on_prior_s, 
+                                                                    **fiss_induced_neut_kwargs)
+            dt = time[1] - time[0]
+        
         emission_rate = dict()
-        dt = time[1] - time[0]
         for element, ne_dict in cum_neutrinos.items():
             element_emission_rate = dict()
             for ne, neutrino_data in ne_dict.items():
                 element_emission_rate[ne] = np.gradient(neutrino_data, dt)
             emission_rate[element] = element_emission_rate
         
-        return emission_rate
+        return emission_rate, (cum_neutrinos, dt)
             
-            
+    def neutrino_flux_for_moving_observer(self, neutrino_emission_rate: Dict[str, Dict[str, np.ndarray]], 
+                                          dt=1.0, 
+                                          radial_velocity=0.0, 
+                                          r0=0.0,
+                                          r=None):
 
+        ne_flux = dict()
+        for element, ne_dict in neutrino_emission_rate.items():
+            fuel_type_specific = dict()
+            for ne, neutrino_data in ne_dict.items():
+                # Calculate the radial position over time for this observer
+                if r is None:
+                    time = np.linspace(0, len(neutrino_data) * dt, len(neutrino_data))
+                    r = r0 + radial_velocity * time
+                flux = neutrino_data / (4 * np.pi * r**2)
+                fuel_type_specific[ne] = flux
+            
+            ne_flux[element] = fuel_type_specific
+        return ne_flux
+    
+    def xe_poisoning(self, t, neutron_percent: Union[float, np.ndarray] = None, 
+                     neutron_flux: float=None,
+                 cross_section: Dict[str, Dict[str, Union[float, np.ndarray]]] = None):
+        xe_poisoning = dict()
+        
+        # go through all of the nuclide specific fission products
+        for fuel, ne_dict in self._fission_induced_neutrinos_cache.items():
+            ne_specific = dict()
+            
+            # if not sublist(set(ne_dict.keys()), set(cross_section.keys())):
+            #     raise KeyError(f"Cross section keys {cross_section.keys()} must match fission induced neutrions neutron keys {ne_dict.keys()}")
+            
+            for ne, data in ne_dict.items():
+                for nuclide in tqdm(data['nuclide_specific'], desc=f"Xe poisoning for {fuel} {ne}", 
+                                    total=len(data['nuclide_specific'])):
+                    nuclide.total_neutrino_profile_with_xe_poisoning = np.zeros(len(t))
+                    try:
+                        cross_section[ne]
+                    except KeyError:
+                        raise KeyError(f"Cross section keys {cross_section.keys()} must match fission induced neutrions neutron keys {ne_dict.keys()}")
+                    nuclide.xe_poisoning(t, neutron_flux=neutron_flux, neutron_percent=neutron_percent, cross_section=cross_section[ne])
+                    for linear_chain in nuclide.decay_chain:
+                        neut_vec = self.neutrino_vec(linear_chain, cumulative=True)
+                        branch_probability = np.prod(linear_chain['intensity'].values)
+                        nuclide.total_neutrino_profile_with_xe_poisoning += nuclide.fission_yeild * branch_probability * np.sum([neut_vec[i] * concentration for i, concentration in enumerate(linear_chain.xe_poisoning_concentration.values)], axis=0)
+                ne_specific[ne] = np.sum([nuc.total_neutrino_profile_with_xe_poisoning for nuc in data['nuclide_specific'] if not np.isnan(nuc.total_neutrino_profile_with_xe_poisoning[0])], axis=0)    
+            xe_poisoning[fuel] = ne_specific
+        return xe_poisoning
+
+
+                    
 
         
         

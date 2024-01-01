@@ -1,0 +1,2 @@
+class DecayChainDepthWarning(Warning):
+    pass
