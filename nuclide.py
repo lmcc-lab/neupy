@@ -119,7 +119,7 @@ class _WeightedBatemanProfile(_BatemanProfile):
 
 class Nuclide:
 
-    def __init__(self, A: int=None, Z: int=None, level: int = 0, AZI:int=None, nubase: pd.DataFrame=None, fy: dict=None, config_file: dict=None, nubase_config: dict=None, search_in_fy=False,
+    def __init__(self, A: int=None, Z: int=None, level: int = 0, AZI:int=None, nubase: pd.DataFrame=None, fy: dict=None, config_file: dict=None, nubase_config: dict=None, search_in_fy=True,
                  force_level_0 = True, database_path = f"{path}\\databases\\") -> None:
         """
         Search for a nuclide in the Nubase and Fission databases. If no database is provided in arguements
@@ -183,12 +183,21 @@ class Nuclide:
             fy = ld.load_all_fy_databases(path=database_path)
         
         self.fy = fy
+        self.found_fission_yield = False
 
         # Find AZI in fy
         self.nuclide_fission_info = {}
         if search_in_fy:
-            for fy_type, db in self.fy.items():
-                self.nuclide_fission_info[fy_type] = db.loc[db['AZI'] == self.AZI]
+            for fy_element, ne_dict in self.fy.items():
+                element_fy = {}
+                for ne, db in ne_dict.items():
+                    try:
+                        element_fy[ne] = db.loc[self.AZI, 'Y']
+                        self.found_fission_yield = True
+                    except KeyError:
+                        element_fy[ne] = 0.0
+
+                self.nuclide_fission_info[fy_element] = element_fy
 
         # Find AZI in nubase
         self.nuclide_nubase_info = self.nubase.loc[self.nubase['AZI'] == self.AZI]
@@ -205,13 +214,17 @@ class Nuclide:
         self.integral_total_neutrino_profile = 0
         self.derivative_total_neutrino_profile = 0
         self._focused_linear_chain = None
-        self.fission_yeild = None
         self.total_neutrino_profile_with_xe_poisoning = 0
+        self.xe_pois_affected_nuclides = ['1350540', '1350550', '1350560']
 
 
     @staticmethod
     def _azi_gen(A, Z, level=0):
         return ''.join(["0"]*(3-len(f"{A}")))+f"{A}" + ''.join(["0"]*(3-len(f"{Z}"))) + f"{Z}" + f"{level}"
+    
+    def get_fission_yield(self):
+        for fy_type, db in self.fy.items():
+            self.nuclide_fission_info[fy_type] = db.loc[db['AZI'] == self.AZI]
 
     def all_nubase_data_on_nuclide(self):
         """
@@ -573,8 +586,11 @@ f'''{mermaid_flow}
         # go through decay chains in this nuclide, and check if Xe135 is present
         for i, linear_chain in enumerate(self.decay_chain):
             # Check if Xe135 is in linear_chain
-            linear_chain['XePoisObject'] = linear_chain['bateman_object'].apply(lambda row: row.bateman_equation)
-            linear_chain['XePois'] = linear_chain['XePoisObject'].copy()
+            linear_chain['XePoisObject'] = linear_chain['bateman_object'].copy()
+            linear_chain['XePois'] = linear_chain['XePoisObject'].apply(lambda row: row.bateman_equation)
+
+            if Xe135AZI not in linear_chain['AZI'].values:
+                continue
 
             half_lives = linear_chain['half_life'].values
 
@@ -591,15 +607,21 @@ f'''{mermaid_flow}
                 precursor_concentration = linear_chain.loc[linear_chain_size-4,'bateman_object'].bateman_equation
                 precursor_dc = lambdai[0]
                 lambdai = lambdai[1:]
+            
             linear_chain.loc[linear_chain_size-3:, 'XePoisObject'] = linear_chain[linear_chain_size-3:].apply(lambda row: _XePoisConc(row.name-linear_chain_size+3, lambdai, precursor_concentration=precursor_concentration, precursor_decay_constant=precursor_dc, **neutron_kwargs), axis=1)
             linear_chain.loc[linear_chain_size-3:, 'XePois'] = linear_chain.loc[linear_chain_size-3:, 'XePoisObject'].apply(lambda row: row.calculate)
 
             Xe136 = Nuclide(136, 54, nubase=self.nubase, fy=self.fy, nubase_config=self.nubase_config,
                             config_file = self.config)
+
+            Xe136_concentration = _XePoisConc(3, lambdai, precursor_concentration=precursor_concentration, precursor_decay_constant=precursor_dc, **neutron_kwargs)
             
-            Xe136_concentration = _XePoisConc(3, lambdai, linear_chain.loc[linear_chain_size-4, 'XePois'], lambdai[-3], **neutron_kwargs)
-            
-            Xe136_contribution = pd.DataFrame([[Xe136, Xe136.AZI, ('stbl', None), Xe136_concentration.calculate, Xe136_concentration]], columns=['nuclide', 'AZI', 'half_life', 'XePois', 'XePoisObject'], index=[linear_chain.shape[0]])
+            Xe136_contribution = pd.DataFrame([[Xe136, Xe136.AZI, ('stbl', None), Xe136_concentration.calculate, Xe136_concentration, 
+                                                lambda t: np.zeros(len(t)), lambda t: np.zeros(len(t)), lambda t: np.zeros(len(t)), lambda t: np.zeros(len(t)),
+                                                lambda t: np.zeros(len(t)), lambda t: np.zeros(len(t))]], 
+                                              columns=['nuclide', 'AZI', 'half_life', 'XePois', 'XePoisObject',
+                                                       'cum_neut', 'int_cum_neut', 'der_cum_neut', 'weight_cum_neut',
+                                                       'weight_int_cum_neut', 'weight_der_cum_neut'], index=[linear_chain.shape[0]])
             
             updated_linear_chain = pd.concat([linear_chain, Xe136_contribution], axis=0)
 
@@ -608,7 +630,7 @@ f'''{mermaid_flow}
     def weighted_xe_poisoning(self, **neutron_kwargs):
         self.xe_poisoning(**neutron_kwargs)
         for linear_chain in self.decay_chain:
-            linear_chain['WeightXePois'] = linear_chain.apply(lambda row: _WeightedBatemanProfile(row.XePoisObject, 'calculate', row.intensity), axis=1)
+            linear_chain['weight_XePois'] = linear_chain.apply(lambda row: _WeightedBatemanProfile(row.XePoisObject, 'calculate' if row.AZI in self.xe_pois_affected_nuclides else 'bateman_equation', row.intensity), axis=1)
             
 
 class _XePoisConc:
