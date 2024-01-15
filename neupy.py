@@ -45,7 +45,7 @@ class _TotalCumNeutrinos:
     def calculate(self, t):
         total_neutrino_profile = 0
         for linear_chain in self.nuclide.decay_chain:
-            total_neutrino_profile += np.sum(np.vstack([cum_function(t) for cum_function in linear_chain[self.column].values]), axis=0)
+            total_neutrino_profile += np.sum(np.vstack([cum_function(t) for i, cum_function in enumerate(linear_chain[self.column].values) if linear_chain['AZI'].values[i] != '1360540']), axis=0)
         return total_neutrino_profile
 
 class _FissionProductTotalNeutrinos:

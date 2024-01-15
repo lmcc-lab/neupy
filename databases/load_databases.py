@@ -85,7 +85,7 @@ def load_nubase(path: str=f"{path}\\databases\\", filename: str='nubase2020.txt'
     return df, config
 
 
-def load_config(config_path: str) -> dict:
+def load_config(config_path: str, config_name='config.yaml') -> dict:
     """
     Load config.yaml file
 
@@ -95,7 +95,7 @@ def load_config(config_path: str) -> dict:
     @returns
     fiss_data: dict
     """
-    with open(config_path + 'config.yaml', 'r') as file:
+    with open(f"{config_path}\\{config_name}", 'r') as file:
         config = safe_load(file)
     return config
 

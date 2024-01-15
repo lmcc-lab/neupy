@@ -637,9 +637,12 @@ class _XePoisConc:
 
     def __init__(self, chain_index: int, xe_chain_decay_constants: List[Nuclide], precursor_concentration: Optional[_Bateman]=None, precursor_decay_constant: Optional[Nuclide]=None,
                  neutron_percent: Union[Callable, float]=1.0,
-                 neutron_flux: float=1.6e9,
-                 neutron_cross_section: float = 2.805e-18
+                 neutron_flux: float=ANSTO_thermal_neutron_flux,
+                 neutron_cross_section: float = xe_neutron_cross_section
                  ):
+        """
+        neutron cross section is taken from config.py
+        """
         self.prior_concentration = precursor_concentration if precursor_concentration is not None else lambda t: 0
         self.xe_creation_rate = precursor_decay_constant if precursor_decay_constant is not None else 0
         self.xe_dc, self.cs_dc, self.ba_dc = xe_chain_decay_constants
