@@ -1,10 +1,11 @@
 from neupy.nuclide import Nuclide, pprint, pd, np, DecayChainDepthWarning, max_chain_depth, _Bateman
 from neupy.databases.load_databases import load_all_fy_databases
 from tqdm import tqdm
-from typing import Union, Tuple, Dict, List
+from typing import Union, Tuple, Dict, List, Optional, Callable
 from neupy.config import *
 import pickle
 from neupy import path, sublist
+import re
 
 
 class _CumulativeNeutrinos:
@@ -59,8 +60,51 @@ class _FissionProductTotalNeutrinos:
         for nuclide in self.fission_nuclide_array:
             total_neutrinos += nuclide.__getattribute__(self.attribute)(t)
         return total_neutrinos
-            
+    
 
+class _FuelMix:
+
+    def __init__(self, fission_neutrino_data: Dict[str, Dict[str, Dict[str, Union[float, Nuclide, _FissionProductTotalNeutrinos]]]],
+                 total_fissile_mass_g: float):
+        self.fission_neutrino_data = fission_neutrino_data
+        self.total_fissile_mass_g = total_fissile_mass_g
+        fuels_to_use = list(fission_neutrino_data.keys())
+        fuels_with_cross_sections = list(fissile_fuel_cross_sections_barns.keys())
+        self.cross_section_probabilities = {}
+        total_cross_section = {ne: 0 for ne in fissile_fuel_cross_sections_barns[fuels_with_cross_sections[0]]}
+        for fuel, data in fissile_fuel_cross_sections_barns.items():
+            if fuel not in fuels_to_use:
+                continue
+
+            self.cross_section_probabilities[fuel] = {}
+
+            for neutron_energy, cross_section in data.items():
+                total_cross_section[neutron_energy] += cross_section
+            
+        for fuel, data in self.cross_section_probabilities.items():
+            for neutron_energy, cross_section in fissile_fuel_cross_sections_barns[fuel].items():
+                self.cross_section_probabilities[fuel][neutron_energy] = cross_section / total_cross_section[neutron_energy]
+
+    def calculate(self, t):
+        results = {}
+        for fuel, data in self.fission_neutrino_data.items():
+            percent = data['concentration']
+            nuclide = data['nuclide']
+            neutrino_data = data['neutrino_data']
+            nuclide_mass = nuclide.mass_amu * amu_to_g
+            num_fissile_atoms = self.total_fissile_mass_g * percent / nuclide_mass
+            ne_specific_results = {}
+            for ne, ne_dict in neutrino_data.items():
+                cross_section_prob = self.cross_section_probabilities[fuel]['spectrum_average'] if ne not in self.cross_section_probabilities[fuel] else self.cross_section_probabilities[fuel][ne]
+                total_neutrinos_for_fissile_material = ne_dict['total_neutrinos'](t) * num_fissile_atoms * cross_section_prob
+                ne_specific_results[ne] = total_neutrinos_for_fissile_material
+            results[fuel] = ne_specific_results
+        return results
+
+def save_pickle_file(file_path:str, file_name: str, data):
+    with open(f'{file_path}{file_name}.pickle', 'wb+') as f:
+        pickle.dump(data, f)
+                            
 class NeutrinoEmission:
 
     def __init__(self) -> None:
@@ -214,7 +258,7 @@ class Neupy(NeutrinoEmission):
     
     def all_fission_induced_neutrinos(self, 
                                       neutron_energy_range: Union[Tuple[float], float, None] = None, 
-                                      use_elements: Union[str, List[str]] = ['U235', 'PU239', 'U233'],
+                                      use_elements: Union[str, List[str]] = None,
                                       load_saved=False, 
                                       save = True,
                                       file_name = 'neutrino_results',
@@ -247,17 +291,25 @@ class Neupy(NeutrinoEmission):
         **kwargs: passed on to fission_induced_neutrinos
         
         """
+        if isinstance(use_elements, str):
+            use_elements = [use_elements]
+        elif use_elements is None:
+            use_elements = list(self.fy.keys())
+
         if load_saved:
             print(f'loading fission data from {file_path}{file_name}.pickle')
             with open(f'{file_path}{file_name}.pickle', 'rb') as f:
                 fission_product_neutrino_data = pickle.load(f)
             print('Fission data loaded')
+            fission_product_neutrino_data = {fuel: 
+                                             {ne: data for ne, data in ne_data.items() 
+                                              if neutron_energy_range is None 
+                                              or ((isinstance(neutron_energy_range, float) and ne == neutron_energy_range) 
+                                                   or (isinstance(neutron_energy_range, tuple) and neutron_energy_range[0] <= ne <= neutron_energy_range[1]))}
+                                                     for fuel, ne_data in fission_product_neutrino_data.items() if fuel in use_elements}
             self._fission_induced_neutrinos_cache = fission_product_neutrino_data
             return fission_product_neutrino_data
         
-        if isinstance(use_elements, str):
-            use_elements = [use_elements]
-
         fission_product_neutrino_data = dict()
         for fission_element, ne_dict in self.fy.items():
 
@@ -298,8 +350,7 @@ class Neupy(NeutrinoEmission):
             fission_product_neutrino_data[fission_element] = element_fpnd
         
         if save:
-            with open(f'{file_path}{file_name}.pickle', 'wb+') as f:
-                pickle.dump(fission_product_neutrino_data, f)
+            save_pickle_file(file_path, file_name, fission_product_neutrino_data)
 
         self._fission_induced_neutrinos_cache = fission_product_neutrino_data
 
@@ -469,9 +520,15 @@ class Neupy(NeutrinoEmission):
         
         """
         fission_product_neutrino_data = {}
+        
+        cross_section = kwargs.get('cross_section', None)
+        if cross_section is not None:
+            kwargs.pop('cross_section')
         for fission_element, fiss_dict in self._fission_induced_neutrinos_cache.items():
             element_fpnd = {}
             for ne, ne_dict in fiss_dict.items():
+                if isinstance(cross_section, dict):
+                    kwargs['neutron_cross_section'] = cross_section.get(ne, None)
                 nuclide_neutrino_data = []
                 for nuclide in tqdm(ne_dict['nuclide_specific'], total=len(ne_dict['nuclide_specific']), desc=f"{fission_element} {ne}"):
                     fy = nuclide.nuclide_fission_info[fission_element][ne]
@@ -480,7 +537,92 @@ class Neupy(NeutrinoEmission):
                 element_fpnd[ne] = {"total_neutrinos": _FissionProductTotalNeutrinos(nuclide_neutrino_data, 'total_neutrino_profile_with_xe_poisoning').calculate,
                                     'nuclide_specific': nuclide_neutrino_data}
             fission_product_neutrino_data[fission_element] = element_fpnd
+        self._fission_induced_neutrinos_cache = fission_product_neutrino_data
         return fission_product_neutrino_data
+
+    def fission_neutrinos_with_static_fuel_mixture(self, cumulative_neutrino_data: Optional[dict]=None, fuel_mix: Union[str, Dict[str, float]]="meat_spec_standard_fuel",
+                                                   total_fissile_mass_g: Optional[float] = None):
+        """
+        The fuel mixture of a nuclear reactor can be used to calculate the cumulative neutrino
+        emissions for any reactor core. Using the fuel proportions, we assume given all the 
+        fissile material, there is an equal probability of any one of them fissioning with
+        contact with a neutron. The fuel mixture is also assumed to remain static throughout
+        the entirety of the time domain provided. 
+
+        Params
+        ----------
+        cumulative_neutrino_data: Optional | dict, the neutrino emission function for specific fission isotopes.
+                              If it isn't given, then we use self._fission_induced_neutrino_cache. If it is given,
+                              it needs to be of the form 
+                              {"isotope symbol": {"neutron energy": {"total_neutrinos": _FissionProductTotalNeutrinos.calculate}}}
+
+        fuel_mix: str | Dict[str, float], providing the fuel ensemble name as specified
+                  ANSTO_specifications.yaml file, one can grab the specific fuel mix values, with
+                  the fuel_mix string options being 'meat_spec_standard_fuel', 'meat_spec_type_2_fuel'
+                  and 'meat_spec_type_1_fuel'. You can also specifify a custom fuel mix but putting in
+                  a fuel_mix dictionary, with the relative proportions of fissile material.
+        """
+
+        fuels_we_have_data_for = None
+        if self._fission_induced_neutrinos_cache is not None:
+            cumulative_neutrino_data = cumulative_neutrino_data if cumulative_neutrino_data is not None else self._fission_induced_neutrinos_cache
+            fuels_we_have_data_for = list(cumulative_neutrino_data.keys())
+            
+        if isinstance(fuel_mix, str):
+            # Get the fuel mix from ANSTO config file
+            fuel_mix = ANSTO_config[fuel_mix]
+            # get the concentration percantages and U total mass
+            concentration_perc = fuel_mix['concentration_%']
+            if total_fissile_mass_g is None:
+                total_fissile_mass_g = fuel_mix['U_total_mass_per_fuel_assembly_g']
+
+        elif isinstance(fuel_mix, dict):
+            if total_fissile_mass_g is None:
+                total_fissile_mass_g = 1
+
+            concentration_perc = fuel_mix
+        
+        else:
+            raise ValueError("Fuel mix isn't the right data type")
+        
+        fission_concentration_perc = {}
+        total_perc = 0
+        # Exclude any non fissile material (or at least not in our fission neutrino dataset).
+        for fuel, percent in concentration_perc.items():
+            if fuels_we_have_data_for is not None:  # This is temporary, will remove when not testing
+                if fuel not in fuels_we_have_data_for:
+                    continue
+            # Convert fission symbol into one that can be used to search nubase
+            symbol_split = [sym for sym in re.split('(\d+)', fuel) if sym != '']
+            for sym in symbol_split:
+                try:
+                    int(sym)
+                    number=sym
+                except ValueError:
+                    letter = sym
+            if len(letter) > 1:
+                letter = letter[0] + letter[1:].casefold()
+            atomic_symbol = number + letter
+
+            fission_nubase_data = self.nuclide_template.nubase.loc[self.nuclide_template.nubase['A El'] == atomic_symbol]
+            AZI = fission_nubase_data.index.values[0]
+            fission_element = Nuclide(AZI=AZI, fy=self.nuclide_template.fy, nubase=self.nuclide_template.nubase,
+                                        nubase_config=self.nuclide_template.nubase_config, 
+                                        config_file=self.nuclide_template.config)
+            fission_concentration_perc[fuel] = {"nuclide": fission_element, "concentration": percent, "neutrino_data": cumulative_neutrino_data[fuel]}
+
+            total_perc += percent
+        # Renormalising with just fission fuel
+        fission_concentration_perc = {fuel: {"concentration": data['concentration']/total_perc, "nuclide": data['nuclide'], "neutrino_data": data['neutrino_data']} for fuel, data in fission_concentration_perc.items()}
+        fuel_mix = _FuelMix(fission_concentration_perc, total_fissile_mass_g).calculate
+        return fuel_mix
+
+        
+
+
+            
+            
+            
 
 
                     

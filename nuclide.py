@@ -205,6 +205,12 @@ class Nuclide:
         if self.nuclide_nubase_info.shape[0] == 0:
             self.found = False
         
+        mass_excess = self.nuclide_nubase_info.loc[self.AZI, 'Mass #']
+        num_protons = self.Z
+        num_neutrons = self.A - num_protons
+        self.mass_amu = num_protons * proton_amu + num_neutrons * neutron_amu + mass_excess * kev_to_amu
+        
+        
         # Initilise some params
         self.decay_chain = pd.DataFrame([], columns=['nuclide', 'dm'])
         self.allow_energetically_possible_decay_paths = True
@@ -579,7 +585,7 @@ f'''{mermaid_flow}
         neutron_kwargs are passed to _XeConcentrationModel. There are three kwargs, which are
         neutron_percent: Union[Callable, float] = 1.0, 
         neutron_flux: float = 1.6e9,
-        cross_section: float = 2.805e-18
+        neutron_cross_section: float = 2.805e-18
         """
         Xe135AZI = '1350540'
         focused_AZI = ['1350530', Xe135AZI, '1350550', '1350560']
@@ -638,7 +644,7 @@ class _XePoisConc:
     def __init__(self, chain_index: int, xe_chain_decay_constants: List[Nuclide], precursor_concentration: Optional[_Bateman]=None, precursor_decay_constant: Optional[Nuclide]=None,
                  neutron_percent: Union[Callable, float]=1.0,
                  neutron_flux: float=ANSTO_thermal_neutron_flux,
-                 neutron_cross_section: float = xe_neutron_cross_section
+                 neutron_cross_section: float = xe_neutron_cross_section_cm2
                  ):
         """
         neutron cross section is taken from config.py
