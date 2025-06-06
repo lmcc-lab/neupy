@@ -23,11 +23,11 @@ class _Bateman:
     @staticmethod
     def bateman_equation_latex(n):
         for nn in range(n):
-            prod_str = ''.join(['\lambda_{{{0}}}'.format(i+1) for i in range(nn)])
+            prod_str = ''.join([r'\lambda_{{{0}}}'.format(i+1) for i in range(nn)])
             frac_str = ''
             for i in range(nn+1):
-                denom_str = ''.join(['(\lambda_{{{0}}}-\lambda_{{{1}}})'.format(j+1, i+1) for j in range(nn+1) if j != i])
-                frac_str += '{1}{0} e^{{-\lambda_{{{2}}}t}}{3}'.format(r"\frac{" if nn>0 else "","" if i==0 else "+", i+1, "}}{{{0}}}".format(denom_str) if nn > 0 else "")
+                denom_str = ''.join([r'(\lambda_{{{0}}}-\lambda_{{{1}}})'.format(j+1, i+1) for j in range(nn+1) if j != i])
+                frac_str += r'{1}{0} e^{{-\lambda_{{{2}}}t}}{3}'.format(r"\frac{" if nn>0 else "","" if i==0 else "+", i+1, "}}{{{0}}}".format(denom_str) if nn > 0 else "")
             print(r'N_{{{0}}}(t) &= N_1(0)\times{1}\times\left({2}\right)'.format(nn+1, prod_str, frac_str), r'\\')
 
     def bateman_equation(self, t):
@@ -204,8 +204,11 @@ class Nuclide:
         self.found = True
         if self.nuclide_nubase_info.shape[0] == 0:
             self.found = False
+            return
         
         mass_excess = self.nuclide_nubase_info.loc[self.AZI, 'Mass #']
+        if type(mass_excess) is not float:
+            mass_excess = mass_excess[0]
         num_protons = self.Z
         num_neutrons = self.A - num_protons
         self.mass_amu = num_protons * proton_amu + num_neutrons * neutron_amu + mass_excess * kev_to_amu
@@ -313,6 +316,9 @@ class Nuclide:
                                'dintensity': [self.convert_intensity_to_decimal(dratio)],
                                "AZI": next_gen}, 
                                index=[path_num+str(new_path_num - path_num_offset)])  # Update the decay_path dataframe with the next nuclide. Path_num
+            if decay_paths.empty:
+                decay_paths = df
+                continue
             decay_paths = pd.concat([decay_paths, df])                                                      # is updated as a string representing the decay path of the decay
                                                                                                             # chain. For example, if path_num is 0, and new_path_num is 1, then
                                                                                                             # the index is 01

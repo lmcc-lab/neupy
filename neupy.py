@@ -593,7 +593,7 @@ class Neupy(NeutrinoEmission):
                 if fuel not in fuels_we_have_data_for:
                     continue
             # Convert fission symbol into one that can be used to search nubase
-            symbol_split = [sym for sym in re.split('(\d+)', fuel) if sym != '']
+            symbol_split = [sym for sym in re.split(r'(\d+)', fuel) if sym != '']
             for sym in symbol_split:
                 try:
                     int(sym)
