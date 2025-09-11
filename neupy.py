@@ -249,8 +249,8 @@ class Neupy(NeutrinoEmission):
         nuclide.integral_total_neutrino_profile = _TotalCumNeutrinos(nuclide, 'weight_int_cum_neut').calculate
         nuclide.derivative_total_neutrino_profile = _TotalCumNeutrinos(nuclide, 'weight_der_cum_neut').calculate
             
-    def fission_induced_neutrinos(self, nuclide: Nuclide, fy: float, **flag_kwargs):
-        nuclide.initialise_bateman_objects(**flag_kwargs)
+    def fission_induced_neutrinos(self, nuclide: Nuclide, fy: float, include_isomer_decay=False, allow_energtically_possible=True, allow_theoretical=True, **flag_kwargs):
+        nuclide.initialise_bateman_objects(allow_theoretical=allow_theoretical, allow_energtically_possible=allow_energtically_possible, include_isomer_decay=include_isomer_decay)
         for linear_chain in nuclide.decay_chain:
             self.cumulative_neutrino_profile(linear_chain, **flag_kwargs)
             self.weighted_cumulative_neutrinos(linear_chain, fy)
@@ -337,7 +337,7 @@ class Neupy(NeutrinoEmission):
                         self.missing_nuclides.append(AZI)
                         continue
                     try:
-                        self.fission_induced_neutrinos(nuclide, row.Y, **kwargs)
+                        self.fission_induced_neutrinos(nuclide, row.Y, include_isomer_decay=not force_level_0, **kwargs)
                     except DecayChainDepthWarning:
                         print(f"Nuclide {AZI}'s decay chain depth exceeded maximum {max_chain_depth}")
                         continue

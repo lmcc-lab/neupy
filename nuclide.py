@@ -208,7 +208,10 @@ class Nuclide:
         
         mass_excess = self.nuclide_nubase_info.loc[self.AZI, 'Mass #']
         if type(mass_excess) is not float:
-            mass_excess = mass_excess[0]
+            if isinstance(mass_excess, tuple):
+                mass_excess = mass_excess[0]
+            else:
+                mass_excess = 0
         num_protons = self.Z
         num_neutrons = self.A - num_protons
         self.mass_amu = num_protons * proton_amu + num_neutrons * neutron_amu + mass_excess * kev_to_amu
@@ -277,7 +280,12 @@ class Nuclide:
         if not include_isomer_decay:                                    # If this flag is False, then set nuclide level to 0 and assume no isomer
             self.level = 0                                              # decay. Will make True case in future
             self.AZI = self._azi_gen(self.A, self.Z, self.level)
-        br = self.nuclide_nubase_info.loc[self.AZI, 'BR']               # Get the decay modes from self.nuclide_nubase_info
+        try:
+            br = self.nuclide_nubase_info.loc[self.AZI, 'BR']               # Get the decay modes from self.nuclide_nubase_info
+        except KeyError:
+            print(self.AZI)
+            print(self.nuclide_nubase_info)
+            raise KeyError
         half_life = self.nuclide_nubase_info.loc[self.AZI, 'T #']
         paths = br.split(';')                                           # Break them into the different decay modes (seperated by ';')
         decay_mode_key = self.nubase_config['decay_mode_key']           # Get the key from the config file
@@ -523,7 +531,7 @@ f'''{mermaid_flow}
             return 0
         return np.log(2)/half_life
 
-    def initialise_bateman_objects(self, allow_theoretical=True, *args, **kwargs):
+    def initialise_bateman_objects(self, allow_theoretical=True, include_isomer_decay=False, allow_energtically_possible=True):
         """
         calculate the concentration profiles of your decay chains for this nuclide. These will be saved
         in self.decay_chain in a new column called 'concentration_profile'. These concentrations are the
@@ -553,7 +561,7 @@ f'''{mermaid_flow}
         
         if isinstance(self.decay_chain, pd.DataFrame):
             if self.decay_chain.shape[0] == 0:
-                self.make_decay_chain(*args, **kwargs)
+                self.make_decay_chain(allow_energtically_possible=allow_energtically_possible, include_isomer_decay=include_isomer_decay)
             self.break_decay_chain_branches()
         
         
