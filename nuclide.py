@@ -282,7 +282,9 @@ class Nuclide:
         paths = br.split(';')                                           # Break them into the different decay modes (seperated by ';')
         decay_mode_key = self.nubase_config['decay_mode_key']           # Get the key from the config file
         es = self.nubase_config['equality_symbols']                     # Get the equality symbols from the config file
-        decay_paths = pd.DataFrame([], columns=['nuclide', 'dm', 'intensity', 'dintensity', 'AZI'])       # Initialise the decay_paths dataframe. Dataframe structure is | decay_path (Index) | nuclide | dm |  
+        mass_excess = self.nuclide_nubase_info.loc[self.AZI, 'Mass #']  # Mass excess in keV
+        dmass_excess = self.nuclide_nubase_info.loc[self.AZI, 'dMass #'] # Mass excess uncertainty in keV
+        decay_paths = pd.DataFrame([], columns=['nuclide', 'dm', 'intensity', 'dintensity', 'AZI', 'mass_excess', 'dmass_excess'])       # Initialise the decay_paths dataframe. Dataframe structure is | decay_path (Index) | nuclide | dm |  
         path_num_offset = 0
         for new_path_num, path in enumerate(paths):                     # Go through the decay modes of the nuclide, labeling the path num using new_path_num
 
@@ -314,7 +316,9 @@ class Nuclide:
             df = pd.DataFrame({"nuclide": [next_nuclide], "dm": [dm], 
                                "intensity": [self.convert_intensity_to_decimal(ratio)], 
                                'dintensity': [self.convert_intensity_to_decimal(dratio)],
-                               "AZI": next_gen}, 
+                               "AZI": next_gen,
+                               "mass_excess": [mass_excess],
+                               "dmass_excess": [dmass_excess]}, 
                                index=[path_num+str(new_path_num - path_num_offset)])  # Update the decay_path dataframe with the next nuclide. Path_num
             if decay_paths.empty:
                 decay_paths = df
@@ -362,7 +366,9 @@ class Nuclide:
                          "intensity": [row.intensity],
                          "dintensity": [row.dintensity],
                          "path_index": [path_num],
-                         "AZI": [row.AZI]}
+                         "AZI": [row.AZI],
+                         "mass_excess": [row.mass_excess],
+                         "dmass_excess": [row.dmass_excess]}
             flag_used = [path_num]                                  # Record what paths have been used
             for follow_path in range(1, len(path_num)):             # Index through the path_num, excluding the last number. For example, if the path_num is 
                 prev_nuclide_path = path_num[:-follow_path]         # 600, then these two lines make the previous path: 60, 6. Therefore, we are going from
@@ -374,6 +380,8 @@ class Nuclide:
                 this_path['dintensity'].append(prev_nuclide.dintensity)
                 this_path['path_index'].append(prev_nuclide_path)
                 this_path['AZI'].append(prev_nuclide.AZI)
+                this_path['mass_excess'].append(prev_nuclide.mass_excess)
+                this_path['dmass_excess'].append(prev_nuclide.dmass_excess)
                 flag_used.append(prev_nuclide_path)                                             # Add used flag            
             replica_decay_chain.loc[flag_used, 'used'] = True       # Update replica_decay_chain used column with used flag
             this_path['nuclide'].reverse()                          # reverse order of this_path so it's in order [Parent, child, grandchild, ...] for a branch
@@ -382,6 +390,8 @@ class Nuclide:
             this_path['dintensity'].reverse()
             this_path['path_index'].reverse()
             this_path['AZI'].reverse()
+            this_path['mass_excess'].reverse()
+            this_path['dmass_excess'].reverse()
             this_path = pd.DataFrame(this_path)
             linear_chain.append(this_path)                          # Add this path to the linear chain
         self.decay_chain = linear_chain                             # Update self.decay_chain with the linear chains.
